@@ -1,0 +1,115 @@
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] ./src/components/HomePage.jsx:191:21
+Expected unicode escape
+  189 |               </span>
+  190 |               <span>{story.title}</span>
+> 191 |             </div>\r\n          ))}\r\n        </section>\r\n\r\n        <section classNa...
+      |                     ^
+  192 |           <div className="home-banner-stack">
+  193 |             {banners.map((banner) => (
+  194 |               <Link href="/restaurant" className="home-banner" key={banner.title}>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Browser:
+    ./src/components/HomePage.jsx
+    ./pages/index.jsx
+
+  SSR:
+    ./src/components/HomePage.jsx
+    ./pages/index.jsx 
+    at handleErrors (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] ./src/components/HomePage.jsx
+Code generation for chunk item errored
+An error occurred while generating the chunk item [project]/src/components/HomePage.jsx [ssr] (ecmascript)
+
+Caused by:
+- CJS module can't be async.
+
+Debug info:
+- An error occurred while generating the chunk item [project]/src/components/HomePage.jsx [ssr] (ecmascript)
+- Execution of <EcmascriptModuleAsset as EcmascriptChunkPlaceable>::chunk_item_content failed
+- Execution of EcmascriptChunkItemContent::new failed
+- CJS module can't be async.
+
+Import traces:
+  Browser:
+    ./src/components/HomePage.jsx
+    ./pages/index.jsx
+
+  SSR:
+    ./src/components/HomePage.jsx
+    ./pages/index.jsx 
+    at handleErrors (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] ./src/components/HomePage.jsx:191:21
+Expected unicode escape
+  189 |               </span>
+  190 |               <span>{story.title}</span>
+> 191 |             </div>\r\n          ))}\r\n        </section>\r\n\r\n        <section classNa...
+      |                     ^
+  192 |           <div className="home-banner-stack">
+  193 |             {banners.map((banner) => (
+  194 |               <Link href="/restaurant" className="home-banner" key={banner.title}>
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Browser:
+    ./src/components/HomePage.jsx
+    ./pages/index.jsx
+
+  SSR:
+    ./src/components/HomePage.jsx
+    ./pages/index.jsx 
+    at handleErrors (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] ./src/components/HomePage.jsx
+Code generation for chunk item errored
+An error occurred while generating the chunk item [project]/src/components/HomePage.jsx [ssr] (ecmascript)
+
+Caused by:
+- CJS module can't be async.
+
+Debug info:
+- An error occurred while generating the chunk item [project]/src/components/HomePage.jsx [ssr] (ecmascript)
+- Execution of <EcmascriptModuleAsset as EcmascriptChunkPlaceable>::chunk_item_content failed
+- Execution of EcmascriptChunkItemContent::new failed
+- CJS module can't be async.
+
+Import traces:
+  Browser:
+    ./src/components/HomePage.jsx
+    ./pages/index.jsx
+
+  SSR:
+    ./src/components/HomePage.jsx
+    ./pages/index.jsx 
+    at handleErrors (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+    at processMessage (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2835:28)
+    at <unknown> (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2680:13)
+    at WebSocket.handleMessage (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2325:17) (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_client_16lnmlo._.js:2774:21)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
+[browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior (file://C:/Users/dhafe/OneDrive/Desktop/react website/new website react/new website react/.next/dev/static/chunks/node_modules_next_dist_0zk-zb1._.js:1226:13)
