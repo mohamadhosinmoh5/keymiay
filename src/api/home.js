@@ -1,4 +1,5 @@
-﻿import httpClient from "../helper/httpClient";
+import httpClient from "../helper/httpClient";
+import { toFormData } from "../helper/formData";
 
 export const getHomePageData = async () => {
   const response = await httpClient.get("/home", {
@@ -7,8 +8,6 @@ export const getHomePageData = async () => {
 
   return response.data;
 };
-
-const DISCOUNT_ALL_URL = "https://api.didarads.com/api/v1/discount/all";
 
 export const getDiscountCards = async () => {
   const response = await httpClient.get("/discount/all", {
@@ -20,30 +19,30 @@ export const getDiscountCards = async () => {
 
 const getOfferValue = (offer, keys) => keys.map((key) => offer?.[key]).find(Boolean);
 
-const buildDiscountPayload = (offer) => ({
-  business_id: getOfferValue(offer, ["businessId", "business_id", "businessSlug", "business_slug"]),
-  discount_id: getOfferValue(offer, ["id", "discount_id", "discountId"]),
-  offer_id: getOfferValue(offer, ["offer_id", "offerId", "id"]),
-  title: offer?.title,
-  brand: offer?.brand,
-});
+const isNumericId = (value) => /^\d+$/.test(String(value || "").trim());
 
-export const requestDiscountCode = async (offer) => {
-  const payload = buildDiscountPayload(offer);
+const getCollectionId = (offer) => {
+  const explicitCollectionId = getOfferValue(offer, ["collectionId", "collection_id"]);
+  if (explicitCollectionId) return explicitCollectionId;
 
-  try {
-    const response = await httpClient.post(DISCOUNT_ALL_URL, payload, {
-      requiresAuth: true,
-    });
-
-    return response.data;
-  } catch (postError) {
-    const response = await httpClient.get(DISCOUNT_ALL_URL, {
-      requiresAuth: true,
-      params: payload,
-    });
-
-    return response.data;
-  }
+  const id = getOfferValue(offer, ["id"]);
+  return isNumericId(id) ? id : "";
 };
 
+const buildDiscountPayload = (offer, context = {}) => {
+  const collectionId = getCollectionId(offer);
+
+  return {
+    mobile: context.mobile || offer?.mobile || "",
+    ...(collectionId ? { collection_id: collectionId } : {}),
+  };
+};
+
+export const requestDiscountCode = async (offer, context = {}) => {
+  const payload = toFormData(buildDiscountPayload(offer, context));
+  const response = await httpClient.post("/discount/generate", payload, {
+    requiresAuth: true,
+  });
+
+  return response.data;
+};

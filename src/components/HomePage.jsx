@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
@@ -16,12 +16,19 @@ import {
   Sun,
   TicketPercent,
   Trophy,
+  Copy,
+  Check,
 } from 'lucide-react';
 import LoginModal from './LoginModal';
+import ProfileCompletionModal from './ProfileCompletionModal';
 import MobileBottomNav from './MobileBottomNav';
 import { sendOtp, verifyOtp } from '../api/auth';
+import { updateUserProfile } from '../api/user';
 import { getDiscountCards, getHomePageData, requestDiscountCode } from '../api/home';
 import { getTokenFromAuthResponse, getUserTypeFromAuthResponse, hasAuthToken, setAuthToken } from '../helper/authCookie';
+
+const PROFILE_STORAGE_KEY = 'keymiyay-user-profile';
+const canUseStorage = () => typeof window !== 'undefined' && window.localStorage;
 
 const t = {
   brand: "\u06a9\u06cc \u0645\u06cc\u0627\u06cc",
@@ -62,6 +69,8 @@ const t = {
   discountCode: "\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u0634\u0645\u0627",
   discountRequested: "\u062f\u0631\u062e\u0648\u0627\u0633\u062a \u0634\u0645\u0627 \u062b\u0628\u062a \u0634\u062f.",
   discountFailed: "\u062f\u0631\u06cc\u0627\u0641\u062a \u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u0627\u0646\u062c\u0627\u0645 \u0646\u0634\u062f.",
+  copyCode: "\u06a9\u067e\u06cc \u06a9\u062f",
+  copiedCode: "\u06a9\u067e\u06cc \u0634\u062f",
   search: "\u062c\u0633\u062a\u062c\u0648\u06cc \u0628\u0631\u0646\u062f\u060c \u0647\u062f\u06cc\u0647 \u06cc\u0627 \u067e\u06cc\u0634\u0646\u0647\u0627\u062f...",
   bannerAlt: "\u0628\u0646\u0631 \u067e\u06cc\u0634\u0646\u0647\u0627\u062f \u0648\u06cc\u0698\u0647",
   footerText: "\u0647\u062f\u06cc\u0647\u200c\u0647\u0627\u060c \u062a\u062e\u0641\u06cc\u0641\u200c\u0647\u0627 \u0648 \u0628\u0627\u0634\u06af\u0627\u0647 \u0645\u0634\u062a\u0631\u06cc\u0627\u0646 \u062f\u0631 \u06cc\u06a9 \u062a\u062c\u0631\u0628\u0647 \u0633\u0627\u062f\u0647 \u0648 \u0647\u0645\u0627\u0647\u0646\u06af.",
@@ -102,7 +111,7 @@ const normalizeMediaUrl = (value, fallback) => {
     return fallback;
   }
 
-  if (/^(https?:|data:|blob:|\/)/.test(value)) {
+  if (/^(https?:|data:|blob:)/.test(value)) {
     return value;
   }
 
@@ -134,30 +143,30 @@ const defaultHomeData = {
 ],
 
   brands: [
-  { title: t.restaurant, businessId: 'melal', image: asset('img/restaurant-melal.png'), href: '/restaurant' },
-  { title: t.barial, businessId: 'barial', image: asset('img/barial.jpg'), href: '/business/barial' },
-  { title: t.dorato, businessId: 'dorato', image: asset('img/logo dorato.jpg'), href: '/business/dorato' },
-  { title: t.bastani, businessId: 'bastani', image: asset('img/business-banners/bastani-logo-enhanced.png'), href: '/business/bastani' },
-  { title: t.ibamo, businessId: 'ibamo', image: asset('img/logo ibamo.jpg'), href: '/business/ibamo' },
-  { title: t.mojalal, businessId: 'mojalal', image: asset('img/mojalal.jpg'), href: '/business/mojalal' },
+  { title: t.restaurant, businessId: 'melal', image: asset('img/restaurant-melal.png'), href: '/collections/melal' },
+  { title: t.barial, businessId: 'barial', collectionId: '4', image: asset('img/barial.jpg'), href: '/collections/4' },
+  { title: t.dorato, businessId: 'dorato', collectionId: '5', image: asset('img/logo dorato.jpg'), href: '/collections/5' },
+  { title: t.bastani, businessId: 'bastani', collectionId: '2', image: asset('img/business-banners/bastani-logo-enhanced.png'), href: '/collections/2' },
+  { title: t.ibamo, businessId: 'ibamo', collectionId: '1', image: asset('img/logo ibamo.jpg'), href: '/collections/1' },
+  { title: t.mojalal, businessId: 'mojalal', collectionId: '3', image: asset('img/mojalal.jpg'), href: '/collections/3' },
 ],
 
   categories: [
-  { title: t.gifts, icon: 'Gift' },
-  { title: t.restaurant, icon: 'Store' },
-  { title: t.shop, icon: 'ShoppingBag' },
-  { title: t.club, icon: 'Star' },
-  { title: t.special, icon: 'Sparkles' },
+  { title: t.gifts, icon: 'Gift', href: '#gifts' },
+  { title: t.restaurant, icon: 'Store', href: '/collections/melal' },
+  { title: t.shop, icon: 'ShoppingBag', disabled: true },
+  { title: t.club, icon: 'Star', disabled: true },
+  { title: t.special, icon: 'Sparkles', href: '#vip-gifts' },
 ],
 
   offers: [
   { id: 'melal-discount', businessId: 'melal', title: t.gift1, brand: t.restaurant, tag: t.free, vip: 0, hasGift: true, hasDiscount: false, image: asset('img/restaurant-melal.png') },
-  { id: 'barial-discount', businessId: 'barial', title: t.gift2, brand: t.barial, tag: t.discount, vip: 0, hasGift: true, hasDiscount: true, image: asset('img/barial.jpg') },
-  { id: 'dorato-discount', businessId: 'dorato', title: t.gift3, brand: t.dorato, tag: t.special, vip: 0, hasGift: true, hasDiscount: true, image: asset('img/logo dorato.jpg') },
-  { id: 'ibamo-discount', businessId: 'ibamo', title: '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u062e\u0631\u06cc\u062f \u0627\u0632 \u0627\u06cc\u0628\u0627\u0645\u0648', brand: t.ibamo, tag: t.discount, vip: 0, hasGift: false, hasDiscount: true, code: 'IBAMO72WDBU', image: asset('img/logo ibamo.jpg') },
-  { id: 'bakhshi-discount', businessId: 'bakhshi', title: '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u062e\u0631\u06cc\u062f \u0627\u0632 \u0628\u062e\u0634\u06cc', brand: t.bakhshi, tag: t.discount, vip: 0, hasGift: false, hasDiscount: true, image: asset('img/bakhshi.jpg') },
-  { id: 'bastani-discount', businessId: 'bastani', title: '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u062e\u0631\u06cc\u062f \u0627\u0632 \u0628\u0627\u0633\u062a\u0627\u0646\u06cc', brand: t.bastani, tag: t.discount, vip: 0, hasGift: false, hasDiscount: true, image: asset('img/business-banners/bastani-logo-enhanced.png') },
-  { id: 'mojalal-discount', businessId: 'mojalal', title: '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u062e\u0631\u06cc\u062f \u0627\u0632 \u0645\u062c\u0644\u0644', brand: t.mojalal, tag: t.discount, vip: 0, hasGift: false, hasDiscount: true, image: asset('img/mojalal.jpg') },
+  { id: 'barial-discount', businessId: 'barial', collectionId: '4', title: t.gift2, brand: t.barial, tag: t.discount, vip: 0, hasGift: true, hasDiscount: true, image: asset('img/barial.jpg') },
+  { id: 'dorato-discount', businessId: 'dorato', collectionId: '5', title: t.gift3, brand: t.dorato, tag: t.special, vip: 0, hasGift: true, hasDiscount: true, image: asset('img/logo dorato.jpg') },
+  { id: 'ibamo-discount', businessId: 'ibamo', collectionId: '1', title: '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u062e\u0631\u06cc\u062f \u0627\u0632 \u0627\u06cc\u0628\u0627\u0645\u0648', brand: t.ibamo, tag: t.discount, vip: 0, hasGift: false, hasDiscount: true, code: 'IBAMO72WDBU', image: asset('img/logo ibamo.jpg') },
+  { id: 'bakhshi-discount', businessId: 'bakhshi', collectionId: '6', title: '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u062e\u0631\u06cc\u062f \u0627\u0632 \u0628\u062e\u0634\u06cc', brand: t.bakhshi, tag: t.discount, vip: 0, hasGift: false, hasDiscount: true, image: asset('img/bakhshi.jpg') },
+  { id: 'bastani-discount', businessId: 'bastani', collectionId: '2', title: '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u062e\u0631\u06cc\u062f \u0627\u0632 \u0628\u0627\u0633\u062a\u0627\u0646\u06cc', brand: t.bastani, tag: t.discount, vip: 0, hasGift: false, hasDiscount: true, image: asset('img/business-banners/bastani-logo-enhanced.png') },
+  { id: 'mojalal-discount', businessId: 'mojalal', collectionId: '3', title: '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u062e\u0631\u06cc\u062f \u0627\u0632 \u0645\u062c\u0644\u0644', brand: t.mojalal, tag: t.discount, vip: 0, hasGift: false, hasDiscount: true, image: asset('img/mojalal.jpg') },
 ],
 };
 
@@ -216,12 +225,93 @@ const offerHasValue = (offer, keys) => {
     return undefined;
   }
 
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
   const asFlag = flagValue(value);
   if (asFlag !== undefined && ['boolean', 'number'].includes(typeof value)) {
     return asFlag;
   }
 
-  return String(value).trim() !== '' && String(value).trim() !== '0';
+  const normalizedValue = String(value).trim().toLowerCase();
+
+  if (!normalizedValue || ['0', '[]', '{}', 'null', 'undefined', 'false', 'no'].includes(normalizedValue)) {
+    return false;
+  }
+
+  return true;
+};
+
+const hasMeaningfulGiftValue = (value) => {
+  if (value === undefined || value === null || value === '') {
+    return false;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  const normalizedValue = String(value).trim().replace(/^"+|"+$/g, '').trim().toLowerCase();
+
+  return Boolean(normalizedValue && !['0', '[]', '{}', 'null', 'undefined', 'false', 'no'].includes(normalizedValue));
+};
+
+const getOfferGiftPresence = (offer) => {
+  const explicitGift = offerHasValue(offer, ['hasGift', 'has_gift']);
+
+  if (explicitGift !== undefined) {
+    return explicitGift;
+  }
+
+  const giftActive = flagValue(firstDefinedValue(offer, ['gift_active', 'giftActive']));
+  const giftCountValue = firstDefinedValue(offer, ['gift_count', 'giftCount']);
+  const giftCount = Number(giftCountValue);
+
+  if (giftActive !== undefined) {
+    return giftActive && (giftCountValue === undefined || giftCount > 0);
+  }
+
+  const giftFieldKeys = ['gift', 'gifts', 'gift_title', 'giftTitle', 'gift_name', 'giftName', 'gift_description', 'giftDescription', 'gift_value', 'giftValue'];
+  const hasGiftFieldValue = giftFieldKeys.some((key) => hasMeaningfulGiftValue(offer?.[key]));
+  const hasExplicitGiftField = giftFieldKeys.some((key) => offer?.[key] !== undefined && offer?.[key] !== null && offer?.[key] !== '');
+
+  if (hasGiftFieldValue) {
+    return true;
+  }
+
+  if (hasExplicitGiftField) {
+    return false;
+  }
+
+  return false;
+};
+
+const normalizeOfferActive = (offer) => {
+  const explicitActive = flagValue(firstDefinedValue(offer, [
+    'gift_active',
+    'giftActive',
+    'is_active',
+    'isActive',
+    'active',
+    'enabled',
+  ]));
+
+  if (explicitActive !== undefined) {
+    return explicitActive;
+  }
+
+  const status = String(firstDefinedValue(offer, ['status', 'state']) || '').trim().toLowerCase();
+
+  if (['\u0641\u0639\u0627\u0644', 'active', 'enabled'].includes(status)) {
+    return true;
+  }
+
+  if (['\u063a\u06cc\u0631\u0641\u0639\u0627\u0644', '\u063a\u064a\u0631\u0641\u0639\u0627\u0644', 'inactive', 'disabled', 'expired'].includes(status)) {
+    return false;
+  }
+
+  return true;
 };
 const blockedCategoryTerms = ['pet', 'pets', 'animal', 'animals', '\u062d\u06cc\u0648\u0627\u0646', '\u062d\u06cc\u0648\u0627\u0646\u0627\u062a', '\u062d\u06cc\u0648\u0627\u0646\u0627\u062a \u062e\u0627\u0646\u06af\u06cc'];
 
@@ -298,6 +388,15 @@ const businessAliases = {
   mojalal: ['mojalal', 'mojallal', 'مجلل'],
 };
 
+const fallbackCollectionIdByBusiness = {
+  ibamo: '1',
+  bastani: '2',
+  mojalal: '3',
+  barial: '4',
+  dorato: '5',
+  bakhshi: '6',
+};
+
 const findBusinessKeyInText = (value) => {
   const searchable = normalizeLookupText(value);
 
@@ -329,6 +428,28 @@ const getKnownBusinessKey = (offer) => {
   return findBusinessKeyInText(firstValue(offer, ['description', 'subtitle', 'text', 'body']));
 };
 
+const isNumericCollectionId = (value) => /^\d+$/.test(String(value || '').trim());
+
+const getExplicitCollectionId = (item) => firstValue(item, ['collectionId', 'collection_id']);
+
+const getApiCollectionId = (item) => {
+  const explicitCollectionId = getExplicitCollectionId(item);
+  if (explicitCollectionId) return explicitCollectionId;
+
+  const id = firstValue(item, ['id']);
+  return isNumericCollectionId(id) ? id : undefined;
+};
+
+const getCollectionIdForOffer = (offer) => {
+  const apiCollectionId = getApiCollectionId(offer);
+  if (apiCollectionId) return apiCollectionId;
+
+  const businessKey = getKnownBusinessKey(offer);
+  if (businessKey === 'melal') return undefined;
+
+  return fallbackCollectionIdByBusiness[businessKey];
+};
+
 const getOfferFallback = (offer, index) => {
   const businessKey = getKnownBusinessKey(offer);
 
@@ -344,22 +465,16 @@ const valueMatchesBusiness = (value, businessKey) => {
   return findBusinessKeyInText(value) === businessKey;
 };
 
-const getBusinessDisplayValue = (offer, keys, fallbackValue, businessKey) => {
+const getBusinessDisplayValue = (offer, keys, fallbackValue) => {
   const value = firstValue(offer, keys);
-
-  if (!businessKey) {
-    return value || fallbackValue;
-  }
-
-  return valueMatchesBusiness(value, businessKey) ? value : fallbackValue;
+  return value || fallbackValue;
 };
 const getNormalizedOfferShape = (offer) => {
   const isVip = flagValue(firstDefinedValue(offer, ['vip', 'is_vip', 'isVip', 'isVIP', 'vip_flag', 'vipFlag', 'vip_status', 'vipStatus', 'vip_discount', 'vipDiscount', 'is_vip_discount', 'isVipDiscount'])) === true;
-  const explicitGift = offerHasValue(offer, ['hasGift', 'has_gift', 'gift', 'gift_title', 'giftTitle', 'gift_name', 'giftName', 'gift_description', 'giftDescription', 'gift_value', 'giftValue']);
   const explicitDiscount = offerHasValue(offer, ['hasDiscount', 'has_discount', 'discount', 'discount_title', 'discountTitle', 'discount_percent', 'discountPercent', 'discount_value', 'discountValue', 'discount_amount', 'discountAmount', 'percent', 'percentage', 'code', 'discount_code', 'discountCode', 'coupon', 'coupon_code', 'couponCode']);
-  const searchableText = `${offer.title || ''} ${offer.tag || ''} ${offer.description || ''}`.toLowerCase();
-  const hasGift = isVip ? true : explicitGift ?? /gift|free|\u0647\u062f\u06cc\u0647|\u0631\u0627\u06cc\u06af\u0627\u0646/.test(searchableText);
-  const hasDiscount = isVip ? true : explicitDiscount ?? /discount|coupon|percent|%|\u066a|\u062a\u062e\u0641\u06cc\u0641|\u06a9\u062f/.test(searchableText);
+  const searchableText = `${offer.title || ''} ${offer.tag || ''} ${offer.description || ''} ${offer.gifts || ''}`.toLowerCase();
+  const hasGift = isVip ? true : getOfferGiftPresence(offer);
+  const hasDiscount = isVip ? true : Boolean(explicitDiscount || /discount|coupon|percent|%|\u066a|\u062a\u062e\u0641\u06cc\u0641|\u06a9\u062f/.test(searchableText));
   const offerType = isVip
     ? 'vip-discount'
     : hasGift && hasDiscount
@@ -370,6 +485,7 @@ const getNormalizedOfferShape = (offer) => {
     isVip,
     hasGift,
     hasDiscount,
+    isActive: normalizeOfferActive(offer),
     offerType,
   };
 };
@@ -382,17 +498,21 @@ const normalizeOffers = (items) =>
       ...fallback,
       ...offer,
       id: firstValue(offer, ['id', 'discount_id', 'discountId', 'offer_id', 'offerId']) || fallback.id,
+      collectionId: getCollectionIdForOffer(offer) || fallback.collectionId,
       businessId: businessKey || firstValue(offer, ['businessId', 'business_id', 'businessSlug', 'business_slug', 'slug', 'prefix']) || fallback.businessId,
       title: getBusinessDisplayValue(offer, ['title', 'name', 'gift_title', 'giftTitle'], fallback.title, businessKey),
       brand: getBusinessDisplayValue(offer, ['brand', 'business', 'business_name', 'place'], fallback.brand, businessKey),
       tag: firstValue(offer, ['tag', 'badge', 'type', 'discount_type']) || fallback.tag,
       image: normalizeImage(offer, fallback.image),
       code: firstValue(offer, ['code', 'discount_code', 'discountCode', 'coupon', 'coupon_code', 'couponCode']) || fallback.code || '',
+      href: getCollectionHref(offer) || fallback.href,
+      hasGift: firstDefinedValue(offer, ['hasGift', 'has_gift']),
+      hasDiscount: firstDefinedValue(offer, ['hasDiscount', 'has_discount']),
     };
 
     return {
       ...normalizedOffer,
-      ...getNormalizedOfferShape(offer),
+      ...getNormalizedOfferShape(normalizedOffer),
     };
   });
 
@@ -462,6 +582,39 @@ const findStoryList = (source) => {
 const normalizeApiStories = (payload) => normalizeStories(findStoryList(payload), { allowLocalMediaFallback: false });
 const normalizeDiscountApiOffers = (payload) => normalizeOffers(findOfferList(resolveHomeData(payload)));
 
+const getCollectionHref = (item) => {
+  const collectionId = getCollectionIdForOffer(item);
+  const fallbackKey = getKnownBusinessKey(item) || firstValue(item, ['businessId', 'business_id', 'businessSlug', 'business_slug', 'slug', 'prefix']);
+  const routeKey = collectionId || fallbackKey;
+  return routeKey ? `/collections/${routeKey}` : undefined;
+};
+
+const buildBrandsFromOffers = (offers) => {
+  const seen = new Set();
+
+  return offers
+    .map((offer) => {
+      const collectionId = getCollectionIdForOffer(offer);
+      const businessId = getKnownBusinessKey(offer) || firstValue(offer, ['prefix', 'slug', 'businessId', 'business_id']) || collectionId;
+      const key = String(businessId || collectionId || offer.title || '').toLowerCase();
+
+      if (!key || seen.has(key)) {
+        return null;
+      }
+
+      seen.add(key);
+
+      return {
+        title: offer.brand || offer.title,
+        businessId,
+        collectionId,
+        image: offer.image,
+        href: getCollectionHref(offer) || `/collections/${businessId}`,
+      };
+    })
+    .filter(Boolean);
+};
+
 const getOfferMergeKey = (offer) =>
   String(
     getKnownBusinessKey(offer) ||
@@ -479,18 +632,7 @@ const mergeOfferLists = (fallbackOffers, apiOffers) => {
     return fallbackOffers;
   }
 
-  const mergedOffers = [...apiOffers];
-  const existingKeys = new Set(apiOffers.map(getOfferMergeKey).filter(Boolean));
-
-  fallbackOffers.forEach((offer) => {
-    const key = getOfferMergeKey(offer);
-
-    if (!key || !existingKeys.has(key)) {
-      mergedOffers.push(offer);
-    }
-  });
-
-  return mergedOffers;
+  return apiOffers;
 };
 
 const mergeHomeAndDiscountData = (homePayload, discountPayload) => {
@@ -502,11 +644,12 @@ const mergeHomeAndDiscountData = (homePayload, discountPayload) => {
   return {
     ...normalizedHome,
     stories: discountStories.length ? discountStories : homeStories.length ? homeStories : defaultHomeData.stories,
+    brands: discountOffers.length ? buildBrandsFromOffers(discountOffers) : normalizedHome.brands,
     offers: mergeOfferLists(normalizedHome.offers, discountOffers),
   };
 };
 
-const HOME_DATA_CACHE_KEY = 'keymiay:last-home-data:v1';
+const HOME_DATA_CACHE_KEY = 'keymiay:last-home-data:v3';
 
 const loadCachedHomeData = () => {
   if (typeof window === 'undefined') {
@@ -541,8 +684,8 @@ const normalizeHomeData = (payload) => {
     defaultHomeData.brands
   ).map((brand) =>
     isRestaurantBrand(brand.title)
-      ? { ...brand, image: defaultHomeData.brands[0].image, businessId: brand.businessId || 'melal', href: '/restaurant' }
-      : brand
+      ? { ...brand, image: defaultHomeData.brands[0].image, businessId: brand.businessId || 'melal', href: getCollectionHref(brand) || '/collections/melal' }
+      : { ...brand, href: getCollectionHref(brand) || brand.href }
   );
 
   return {
@@ -590,25 +733,53 @@ const findNestedValue = (source, keys) => {
 };
 
 const discountCodeKeys = ['code', 'discount_code', 'discountCode', 'coupon', 'coupon_code', 'couponCode'];
+const generatedDiscountCodeKeys = [...discountCodeKeys, 'token'];
+
+const getOfferMatchValues = (offer) => {
+  const businessKey = getKnownBusinessKey(offer);
+  const collectionId = getCollectionIdForOffer(offer);
+
+  return [
+    businessKey,
+    collectionId,
+    fallbackCollectionIdByBusiness[businessKey],
+    offer?.collectionId,
+    offer?.collection_id,
+    offer?.businessId,
+    offer?.business_id,
+    offer?.businessSlug,
+    offer?.business_slug,
+    offer?.slug,
+    offer?.prefix,
+    offer?.brand,
+    offer?.business,
+    offer?.business_name,
+    offer?.title,
+    offer?.name,
+  ].filter(Boolean).map(normalizeLookupText);
+};
+
+const getGeneratedCodeItemValues = (item) => [
+  firstValue(item, ['collection_id', 'collectionId', 'id']),
+  firstValue(item, ['prefix', 'slug', 'businessSlug', 'business_slug']),
+  firstValue(item, ['collection', 'collection_name', 'business', 'business_name', 'brand']),
+  firstValue(item, ['title', 'name', 'gift_title', 'giftTitle']),
+  firstValue(item, ['description', 'subtitle', 'text', 'body']),
+].filter(Boolean).map(normalizeLookupText);
 
 const isOfferMatch = (item, offer) => {
   if (!item || typeof item !== 'object' || !offer) {
     return false;
   }
 
-  const itemBusiness = String(firstValue(item, ['businessId', 'business_id', 'businessSlug', 'business_slug', 'slug', 'business', 'business_name', 'brand']) || '').toLowerCase();
-  const offerBusinessCandidates = [offer.businessId, offer.business_id, offer.businessSlug, offer.business_slug, offer.brand]
-    .filter(Boolean)
-    .map((value) => String(value).toLowerCase());
-  const itemTitle = String(firstValue(item, ['title', 'name', 'gift_title', 'giftTitle']) || '').toLowerCase();
-  const offerTitle = String(offer.title || '').toLowerCase();
-  const businessMatches = offerBusinessCandidates.some((offerBusiness) =>
-    itemBusiness && (itemBusiness.includes(offerBusiness) || offerBusiness.includes(itemBusiness))
-  );
+  const offerValues = getOfferMatchValues(offer);
+  const itemValues = getGeneratedCodeItemValues(item);
 
-  return Boolean(
-    businessMatches ||
-    (itemTitle && offerTitle && (itemTitle.includes(offerTitle) || offerTitle.includes(itemTitle)))
+  return itemValues.some((itemValue) =>
+    offerValues.some((offerValue) =>
+      itemValue === offerValue ||
+      (itemValue.length > 2 && offerValue.length > 2 && (itemValue.includes(offerValue) || offerValue.includes(itemValue)))
+    )
   );
 };
 
@@ -648,7 +819,13 @@ const findOfferDiscountCode = (source, offer) => {
 };
 
 const getDiscountCode = (data, offer) =>
-  findOfferDiscountCode(data, offer) || findNestedValue(data, discountCodeKeys);
+  findOfferDiscountCode(data, offer) ||
+  findOfferDiscountCode(data?.data, offer) ||
+  findOfferDiscountCode(data?.result, offer) ||
+  firstValue(data, generatedDiscountCodeKeys) ||
+  firstValue(data?.data, generatedDiscountCodeKeys) ||
+  firstValue(data?.result, generatedDiscountCodeKeys) ||
+  firstValue(data?.discount, generatedDiscountCodeKeys);
 
 const getDiscountMessage = (data) =>
   findNestedValue(data, ['message', 'text', 'description']);
@@ -711,11 +888,7 @@ const shouldPreviewVipOffer = (offer, debugVipValue) => {
   return [getKnownBusinessKey(offer), offer.businessId, offer.id, offer.title, offer.brand]
     .some((value) => normalizeLookupText(value) === normalizedDebugValue || findBusinessKeyInText(value) === normalizedDebugValue);
 };
-const getOfferStatus = (offer) => {
-  return offer.businessId === 'ibamo'
-    ? '\u0641\u0639\u0627\u0644'
-    : '\u063a\u06cc\u0631\u0641\u0639\u0627\u0644';
-};
+const getOfferStatus = (offer) => offer.isActive === false ? '\u063a\u06cc\u0631\u0641\u0639\u0627\u0644' : '\u0641\u0639\u0627\u0644';
 const getOfferTypeLabel = () => '';
 
 const getOfferBenefits = (offer) => {
@@ -780,9 +953,43 @@ function HomePage({ isDarkMode = false, onToggleTheme }) {
   const [storyDurationMs, setStoryDurationMs] = useState(4200);
   const [pendingOffer, setPendingOffer] = useState(null);
   const [discountPopup, setDiscountPopup] = useState(null);
+  const [isDiscountCodeCopied, setIsDiscountCodeCopied] = useState(false);
   const [isRequestingDiscount, setIsRequestingDiscount] = useState(false);
+  const [expandedOfferIds, setExpandedOfferIds] = useState({});
+  const [profileMobile, setProfileMobile] = useState('');
+  const [userProfile, setUserProfile] = useState(null);
+  const [isProfileCompletionOpen, setIsProfileCompletionOpen] = useState(false);
+  const [profileCompletionError, setProfileCompletionError] = useState('');
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
+
+  useEffect(() => {
+    if (!discountPopup?.code) {
+      setIsDiscountCodeCopied(false);
+      return;
+    }
+
+    setIsDiscountCodeCopied(false);
+  }, [discountPopup?.code]);
   const bannerItems = mergeExtraBanners(homeData.banners.length ? homeData.banners : defaultHomeData.banners);
   const debugVipValue = getDebugVipValue(router);
+  const vipOffers = homeData.offers.filter((offer) => offer.offerType === 'vip-discount' || shouldPreviewVipOffer(offer, debugVipValue));
+  const giftDiscountOffers = homeData.offers.filter((offer) => offer.offerType === 'gift-discount' && !shouldPreviewVipOffer(offer, debugVipValue));
+  const simpleDiscountOffers = homeData.offers.filter((offer) => offer.offerType === 'simple-discount' && !shouldPreviewVipOffer(offer, debugVipValue));
+useEffect(() => {
+  if (!canUseStorage()) {
+    return;
+  }
+
+  try {
+    const savedProfile = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (savedProfile) {
+      setUserProfile(JSON.parse(savedProfile));
+    }
+  } catch (error) {
+    localStorage.removeItem(PROFILE_STORAGE_KEY);
+  }
+}, []);
+
 useEffect(() => {
   const checkAuth = () => {
     setIsLoggedIn(hasAuthToken());
@@ -1037,6 +1244,31 @@ useEffect(() => {
     }
   };
 
+  const handleSaveProfile = async (profile) => {
+    try {
+      setIsProfileSaving(true);
+      setProfileCompletionError('');
+
+      const data = await updateUserProfile(profile);
+      const nextProfile = {
+        ...(data?.data?.user || data?.data || data?.user || {}),
+        ...profile,
+      };
+
+      setUserProfile(nextProfile);
+
+      if (canUseStorage()) {
+        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(nextProfile));
+      }
+
+      setIsProfileCompletionOpen(false);
+    } catch (error) {
+      setProfileCompletionError(error.response?.data?.message || error.message || '????? ??????? ????? ???.');
+    } finally {
+      setIsProfileSaving(false);
+    }
+  };
+
   const handleVerifyOtp = async (mobile, otp) => {
     try {
       setIsLoading(true);
@@ -1053,10 +1285,12 @@ useEffect(() => {
 
       setIsLoggedIn(true);
       setIsLoginOpen(false);
+      setProfileMobile(mobile);
+      setIsProfileCompletionOpen(true);
       if (pendingOffer) {
         const offerToClaim = pendingOffer;
         setPendingOffer(null);
-        await handleReceiveOffer(offerToClaim, true);
+        await handleReceiveOffer(offerToClaim, true, mobile);
         return;
       }
 
@@ -1067,10 +1301,18 @@ useEffect(() => {
       setIsLoading(false);
     }
   };
-  const handleReceiveOffer = async (offer, skipAuthCheck = false) => {
-    const isIbamo = offer.businessId === 'ibamo';
 
-    if (!isIbamo) {
+  const getCurrentMobile = (mobileOverride = '') =>
+    mobileOverride ||
+    userProfile?.mobile ||
+    userProfile?.phone ||
+    userProfile?.phone_number ||
+    userProfile?.mobile_number ||
+    profileMobile ||
+    '';
+
+  const handleReceiveOffer = async (offer, skipAuthCheck = false, mobileOverride = '') => {
+    if (offer.isActive === false) {
       setDiscountPopup({
         offer,
         code: '',
@@ -1088,8 +1330,8 @@ useEffect(() => {
 
     try {
       setIsRequestingDiscount(true);
-      const data = await requestDiscountCode(offer);
-      const receivedCode = getDiscountCode(data, offer) || offer.code || '';
+      const data = await requestDiscountCode(offer, { mobile: getCurrentMobile(mobileOverride) });
+      const receivedCode = getDiscountCode(data, offer) || '';
 
       setDiscountPopup({
         offer,
@@ -1099,17 +1341,92 @@ useEffect(() => {
           : getDiscountMessage(data) || t.discountFailed,
       });
     } catch (error) {
-      const fallbackCode = offer.code || '';
-
       setDiscountPopup({
         offer,
-        code: fallbackCode,
-        message: fallbackCode
-          ? '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u0628\u0627 \u0645\u0648\u0641\u0642\u06cc\u062a \u062f\u0631\u06cc\u0627\u0641\u062a \u0634\u062f.'
-          : error.response?.data?.message || error.message || t.discountFailed,
+        code: '',
+        message: error.response?.data?.message || error.message || t.discountFailed,
       });
     } finally {
       setIsRequestingDiscount(false);
+    }
+  };
+
+
+  const renderOfferCard = (offer, index) => {
+    const isDebugVip = shouldPreviewVipOffer(offer, debugVipValue);
+    const displayedOffer = isDebugVip
+      ? { ...offer, offerType: 'vip-discount', isVip: true, hasGift: true, hasDiscount: true }
+      : offer;
+    const offerStatus = getOfferStatus(displayedOffer);
+    const isInactive = offerStatus === '\u063a\u06cc\u0631\u0641\u0639\u0627\u0644';
+    const offerType = displayedOffer.offerType || 'simple-discount';
+    const offerBenefits = getOfferBenefits(displayedOffer);
+    const offerTypeLabel = getOfferTypeLabel(displayedOffer);
+    const offerKey = String(displayedOffer.id || displayedOffer.title || `offer-${index}`);
+    const offerDescription = getOfferDescription(displayedOffer);
+    const hasLongDescription = displayedOffer.offerType === 'vip-discount' && offerDescription.length > 80;
+    const isDescriptionExpanded = Boolean(expandedOfferIds[offerKey]);
+
+    return (
+      <article className={`home-offer-card home-offer-card--${offerType} ${isInactive ? 'is-inactive' : ''}`} key={offerKey}>
+        {displayedOffer.offerType === 'vip-discount' ? <strong className="home-offer-vip-banner">وی‌آی‌پی</strong> : null}
+        <div className="home-offer-media">
+          <img src={displayedOffer.image} alt={displayedOffer.brand} />
+          <span className="home-offer-percent">{getOfferPercent(displayedOffer)}</span>
+          {offerTypeLabel ? <span className="home-offer-kind">{offerTypeLabel}</span> : null}
+          <span className={`home-offer-status ${isInactive ? 'is-inactive' : ''}`}>{offerStatus}</span>
+        </div>
+        <div className="home-offer-copy">
+          <span>{displayedOffer.brand}</span>
+          <h3>{displayedOffer.title}</h3>
+          <div className="home-offer-benefits" aria-label="offer benefits">
+            {offerBenefits.map((benefit) => (
+              <b key={benefit}>{benefit}</b>
+            ))}
+          </div>
+          <p className={`home-offer-description ${isDescriptionExpanded ? 'is-expanded' : ''}`}>{offerDescription}</p>
+          {hasLongDescription ? (
+            <button
+              className="home-offer-read-more"
+              type="button"
+              onClick={() => setExpandedOfferIds((current) => ({ ...current, [offerKey]: !current[offerKey] }))}
+            >
+              {isDescriptionExpanded ? 'کمتر' : 'بیشتر'}
+            </button>
+          ) : null}
+        </div>
+        <div className="home-offer-footer">
+          <button type="button" onClick={() => handleReceiveOffer(offer)} disabled={isRequestingDiscount || isInactive}>
+            {isRequestingDiscount ? t.wait : '\u06a9\u062f \u062e\u0631\u06cc\u062f'}
+          </button>
+        </div>
+      </article>
+    );
+  };
+
+  const renderOfferSection = ({ id, className = '', kicker, title, offers }) => offers.length ? (
+    <section className={`home-section home-offer-section ${className}`} id={id}>
+      <div className="home-section-head">
+        <div>
+          <span>{kicker}</span>
+          <h2>{title}</h2>
+        </div>
+        <button className="home-text-action" type="button">{t.all}</button>
+      </div>
+      <div className="home-offer-grid">
+        {offers.map(renderOfferCard)}
+      </div>
+    </section>
+  ) : null;
+
+  const copyDiscountCode = async () => {
+    if (!discountPopup?.code) return;
+
+    try {
+      await navigator.clipboard.writeText(discountPopup.code);
+      setIsDiscountCodeCopied(true);
+    } catch {
+      setIsDiscountCodeCopied(false);
     }
   };
 
@@ -1120,7 +1437,7 @@ useEffect(() => {
     }
 
     if (id === 'shop') {
-      router.push('/restaurant');
+      router.push('/collections/melal');
       return;
     }
 
@@ -1144,7 +1461,7 @@ useEffect(() => {
 
 
   return (
-    <main className={`page-shell home-shell ${isDarkMode ? 'theme-dark' : ''} ${isLoginOpen ? 'is-login-open' : ''}`} dir="rtl">
+    <main className={`page-shell home-shell ${isDarkMode ? 'theme-dark' : ''} ${isLoginOpen || isProfileCompletionOpen ? 'is-login-open' : ''}`} dir="rtl">
       <section className="frame home-frame">
         <header className="topbar d-flex align-items-center justify-content-between">
           <div className="d-flex align-items-center">
@@ -1254,11 +1571,26 @@ useEffect(() => {
             <h1>{t.heroTitle}</h1>
             <p>{t.heroText}</p>
             <div className="home-hero-actions">
-              <Link className="home-primary-action" href="/restaurant">{t.viewRestaurant}</Link>
+              <Link className="home-primary-action" href="/collections/melal">{t.viewRestaurant}</Link>
               <a href="#gifts">{t.seeGifts}</a>
             </div>
           </aside>
         </section>
+
+        {vipOffers.length ? (
+          <section className="home-section home-vip-section" id="vip-gifts">
+            <div className="home-section-head">
+              <div>
+                <span>پیشنهادهای ویژه</span>
+                <h2>کارت‌های وی‌آی‌پی</h2>
+              </div>
+              <a className="home-text-action" href="#gifts">مشاهده باقی کارت‌ها</a>
+            </div>
+            <div className="home-offer-grid home-vip-offer-grid">
+              {vipOffers.map(renderOfferCard)}
+            </div>
+          </section>
+        ) : null}
 
         <section className="home-section" id="brands">
           <div className="home-section-head">
@@ -1270,7 +1602,7 @@ useEffect(() => {
           </div>
           <div className="home-brand-grid">
             {homeData.brands.map((brand) => (
-              <Link className="home-brand-card" href={brand.href || `/business/${brand.businessId || 'melal'}`} key={brand.title}>
+              <Link className="home-brand-card" href={brand.href || `/collections/${brand.collectionId || brand.businessId || 'melal'}`} key={brand.title}>
                 {isRestaurantBrand(brand.title) ? (
                   <span className="home-brand-melal-logo" aria-label={brand.title}>
                     <span>{'\u0645\u0644\u0644'}</span>
@@ -1293,72 +1625,47 @@ useEffect(() => {
             </div>
           </div>
           <div className="home-category-grid">
-            {homeData.categories.map(({ title, icon, href }) => {
+            {homeData.categories.map(({ title, icon, href, disabled }) => {
               const Icon = categoryIcons[icon] || Gift;
+              const isDisabled = disabled || !href;
 
               return (
-                <article className="home-category-card" key={title}>
-                  <Link href={href || '#'}>
+                <article className={`home-category-card ${isDisabled ? 'is-disabled' : ''}`} key={title} aria-disabled={isDisabled}>
+                  {isDisabled ? (
+                    <button type="button" disabled aria-label={title}>
+                      <span className="home-category-inner">
+                        <Icon />
+                        <span>{title}</span>
+                      </span>
+                    </button>
+                  ) : (
+                  <Link href={href}>
                     <span className="home-category-inner">
                       <Icon />
                       <span>{title}</span>
                     </span>
                   </Link>
+                  )}
                 </article>
               );
             })}
           </div>
         </section>
 
-        <section className="home-section" id="gifts">
-          <div className="home-section-head">
-            <div>
-              <span>{t.freshOffers}</span>
-              <h2>{t.activeGifts}</h2>
-            </div>
-            <button className="home-text-action" type="button">{t.all}</button>
-          </div>
-          <div className="home-offer-grid">
-            {homeData.offers.map((offer, index) => {
-              const isDebugVip = shouldPreviewVipOffer(offer, debugVipValue);
-              const displayedOffer = isDebugVip
-                ? { ...offer, offerType: 'vip-discount', isVip: true, hasGift: true, hasDiscount: true }
-                : offer;
-              const offerStatus = getOfferStatus(displayedOffer);
-              const isInactive = offerStatus === '\u063a\u06cc\u0631\u0641\u0639\u0627\u0644';
-              const offerType = displayedOffer.offerType || 'simple-discount';
-              const offerBenefits = getOfferBenefits(displayedOffer);
-              const offerTypeLabel = getOfferTypeLabel(displayedOffer);
-
-              return (
-                <article className={`home-offer-card home-offer-card--${offerType} ${isInactive ? 'is-inactive' : ''}`} key={offer.id || offer.title || `offer-${index}`}>
-                  {displayedOffer.offerType === 'vip-discount' ? <strong className="home-offer-vip-banner">وی‌آی‌پی</strong> : null}
-                  <div className="home-offer-media">
-                    <img src={displayedOffer.image} alt={displayedOffer.brand} />
-                    <span className="home-offer-percent">{getOfferPercent(displayedOffer)}</span>
-                    {offerTypeLabel ? <span className="home-offer-kind">{offerTypeLabel}</span> : null}
-                    <span className={`home-offer-status ${isInactive ? 'is-inactive' : ''}`}>{offerStatus}</span>
-                  </div>
-                  <div className="home-offer-copy">
-                    <span>{displayedOffer.brand}</span>
-                    <h3>{displayedOffer.title}</h3>
-                    <div className="home-offer-benefits" aria-label="offer benefits">
-                      {offerBenefits.map((benefit) => (
-                        <b key={benefit}>{benefit}</b>
-                      ))}
-                    </div>
-                    <p>{getOfferDescription(displayedOffer)}</p>
-                  </div>
-                  <div className="home-offer-footer">
-                    <button type="button" onClick={() => handleReceiveOffer(offer)} disabled={isRequestingDiscount || isInactive}>
-                      {isRequestingDiscount ? t.wait : '\u06a9\u062f \u062e\u0631\u06cc\u062f'}
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
+        {renderOfferSection({
+          id: 'gifts',
+          className: 'home-gift-discount-section',
+          kicker: 'هدیه و تخفیف',
+          title: 'کارت‌های هدیه‌دار و تخفیفی',
+          offers: giftDiscountOffers,
+        })}
+        {renderOfferSection({
+          id: 'simple-discounts',
+          className: 'home-simple-discount-section',
+          kicker: 'تخفیف ساده',
+          title: 'کارت‌های فقط تخفیف',
+          offers: simpleDiscountOffers,
+        })}
         <section className="home-guide-section" aria-labelledby="home-guide-title">
           <div className="home-guide-head">
             <span>{'\u0631\u0627\u0647\u0646\u0645\u0627\u06cc \u0633\u0631\u06cc\u0639'}</span>
@@ -1395,7 +1702,7 @@ useEffect(() => {
           </div>
           <div className="home-footer-links">
             <Link href="/">{t.home}</Link>
-            <Link href="/restaurant">{t.restaurant}</Link>
+            <Link href="/collections/melal">{t.restaurant}</Link>
             <button type="button" onClick={openAccount}>{t.club}</button>
           </div>
         </footer>
@@ -1410,6 +1717,17 @@ useEffect(() => {
           onClose={closeLogin}
           onSendOtp={handleSendOtp}
           onVerifyOtp={handleVerifyOtp}
+        />
+      )}
+
+      {isProfileCompletionOpen && (
+        <ProfileCompletionModal
+          initialMobile={profileMobile}
+          initialProfile={userProfile || {}}
+          isLoading={isProfileSaving}
+          error={profileCompletionError}
+          onClose={() => setIsProfileCompletionOpen(false)}
+          onSubmit={handleSaveProfile}
         />
       )}
 
@@ -1472,10 +1790,18 @@ useEffect(() => {
       {discountPopup && (
         <div className="home-popup-backdrop" onClick={() => setDiscountPopup(null)}>
           <section className="home-discount-popup" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="home-popup-close" onClick={() => setDiscountPopup(null)}>{t.close}</button>
+            <button type="button" className="home-popup-close" aria-label={t.close} onClick={() => setDiscountPopup(null)}><ChevronLeft /></button>
             <span className="home-eyebrow">{discountPopup.offer?.brand}</span>
             <h2>{discountPopup.code ? t.discountCode : discountPopup.offer?.title}</h2>
-            {discountPopup.code && <div className="home-discount-code">{discountPopup.code}</div>}
+            {discountPopup.code && (
+              <div className="home-discount-code-wrap">
+                <div className="home-discount-code">{discountPopup.code}</div>
+                <button className="home-discount-copy" type="button" onClick={copyDiscountCode}>
+                  {isDiscountCodeCopied ? <Check /> : <Copy />}
+                  <span>{isDiscountCodeCopied ? t.copiedCode : t.copyCode}</span>
+                </button>
+              </div>
+            )}
             <p>{discountPopup.message}</p>
           </section>
         </div>
@@ -1485,6 +1811,13 @@ useEffect(() => {
 }
 
 export default HomePage;
+
+
+
+
+
+
+
 
 
 

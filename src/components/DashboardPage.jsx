@@ -1,117 +1,378 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Check, ChevronLeft, Clock3, Copy, Crown, LogOut, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { CalendarDays, Crown, Gift, LogOut, Mail, PencilLine, Phone, UserRound } from 'lucide-react';
 import userAvatarImage from '../assets/images/user-avatar.jpg';
-import { getMockWallet, getUserWallet } from '../api/wallet';
-import { activeGifts, dashboardActions, giftHistory, mobileProfileLinks, stats } from '../data/siteData';
+import { extractActiveGiftsFromReport, extractUserProfileFromReport, getDiscountReport } from '../api/user';
+import { businessProfiles, dashboardActions, mobileProfileLinks } from '../data/siteData';
+import { toPersianDigits } from '../helper/persianDigits';
 
 const getImageSrc = (image) => image?.src || image;
-const formatToman = (amount) => `${new Intl.NumberFormat('fa-IR').format(Number(amount) || 0)} تومان`;
-const REFERRAL_CODE = 'KEYMIAY2024';
+
+const normalizeMediaUrl = (value = '') => {
+  if (!value) return '';
+  const raw = Array.isArray(value) ? value[0] : value;
+  const text = String(raw).trim().replace(/^\"|\"$/g, '');
+  if (!text || text === '[]') return '';
+  if (/^(https?:|data:|blob:)/.test(text)) return text;
+  if (text.startsWith('/')) return 'https://api.didarads.com' + text.replace(/\s/g, '%20');
+
+  return 'https://api.keymiay.com/images/' + encodeURIComponent(text).replace(/%2F/g, '/');
+};
+
+const handleGiftImageError = (event, fallback) => {
+  if (fallback && event.currentTarget.src !== fallback) {
+    event.currentTarget.src = fallback;
+    return;
+  }
+
+  event.currentTarget.style.display = 'none';
+  event.currentTarget.closest('.active-gift-card, .mobile-active-gift')?.classList.add('has-broken-image');
+};
+
+const firstValue = (source, keys) => {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+
+  return '';
+};
+
+const getNestedValue = (source, paths) => {
+  for (const path of paths) {
+    const value = path.split('.').reduce((current, key) => current?.[key], source);
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+
+  return '';
+};
+
+const getProfileField = (profile, keys) => firstValue(profile || {}, keys);
+
+const getProfileName = (profile) => {
+  const firstName = getProfileField(profile, ['firstName', 'first_name', 'name']);
+  const lastName = getProfileField(profile, ['lastName', 'last_name', 'family', 'family_name']);
+  const fullName = getProfileField(profile, ['fullName', 'full_name']);
+
+  return fullName || [firstName, lastName].filter(Boolean).join(' ') || 'کاربر کی میای';
+};
+
+const isProfileComplete = (profile) => Boolean(
+  getProfileField(profile, ['firstName', 'first_name', 'name']) &&
+  getProfileField(profile, ['lastName', 'last_name', 'family', 'family_name']) &&
+  getProfileField(profile, ['email']) &&
+  getProfileField(profile, ['birthDate', 'birth_date', 'date', 'birthday'])
+);
+
+const getProfileAvatar = (profile) => normalizeMediaUrl(getProfileField(profile, [
+  'avatarPreview',
+  'avatar_preview',
+  'avatar',
+  'avatar_url',
+  'avatarUrl',
+  'profile_image',
+  'profileImage',
+  'profile_photo',
+  'profilePhoto',
+  'image',
+  'photo',
+]));
 
 const getActionSection = (title) => {
-  if (title === 'کیف پول') return 'wallet';
-  if (title === 'هدیه‌های من') return 'gifts';
-  if (title === 'کد معرف') return 'referral';
-  if (title === 'فرآیندها') return 'processes';
+  const label = String(title || '');
+  if (label.includes('کیف') || label.includes('Ú©ÛŒÙ')) return 'wallet';
+  if (label.includes('هدیه') || label.includes('Ù‡Ø¯ÛŒÙ‡')) return 'gifts';
+  if (label.includes('معرف') || label.includes('Ù…Ø¹Ø±Ù')) return 'referral';
+  if (label.includes('تاریخ') || label.includes('ØªØ§Ø±ÛŒØ®')) return 'history';
+  if (label.includes('آمار') || label.includes('Ø¢Ù…Ø§Ø±')) return 'stats';
+  if (label.includes('فرآیند') || label.includes('فرایند') || label.includes('ÙØ±Ø¢') || label.includes('ÙØ±Ø§ÛŒ')) return 'processes';
   return 'account';
 };
 
-function DashboardPage({ isVisible, sectionRequest, onLogout }) {
-  const [walletData, setWalletData] = useState(getMockWallet);
-  const [walletStatus, setWalletStatus] = useState('mock');
-  const [isWalletLoading, setIsWalletLoading] = useState(false);
+const disabledSections = new Set(['wallet', 'processes', 'referral', 'history', 'stats']);
+
+const isEnabledDashboardItem = (item) => !disabledSections.has(getActionSection(item.title));
+
+const isPrimitiveValue = (value) => ['string', 'number', 'boolean'].includes(typeof value);
+
+const getDeepValue = (source, keys) => {
+  if (isPrimitiveValue(source)) return String(source);
+
+  const queue = [source];
+  const seen = new Set();
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== 'object' || seen.has(current)) continue;
+    seen.add(current);
+
+    for (const key of keys) {
+      const value = current[key];
+      if (value !== undefined && value !== null && value !== '' && isPrimitiveValue(value)) {
+        return value;
+      }
+    }
+
+    Object.values(current).forEach((value) => {
+      if (value && typeof value === 'object') queue.push(value);
+    });
+  }
+
+  return '';
+};
+
+const normalizeComparable = (value = '') => String(value).trim().toLowerCase().replace(/[\s\u200c_-]+/g, '');
+
+const cleanReportText = (value = '') => String(value)
+  .replace(/\r?\n/g, ' ')
+  .replace(/:\s*"?\[\]"?/g, '')
+  .replace(/"?\[\]"?/g, '')
+  .replace(/^[:\s"']+|[:\s"']+$/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const hasPersianLetters = (value = '') => /[\u0600-\u06ff]/.test(String(value));
+
+const isValidDiscountCode = (value = '') => {
+  const normalized = cleanReportText(value);
+  return /^[A-Za-z0-9_-]{4,}$/.test(normalized) && !hasPersianLetters(normalized);
+};
+
+const normalizeGiftStatus = (value, title, place) => {
+  const normalized = cleanReportText(value);
+  if (!normalized || normalized === title || normalized === place) return '\u0641\u0639\u0627\u0644';
+  if (normalizeComparable(normalized) === normalizeComparable(title) || normalizeComparable(normalized) === normalizeComparable(place)) {
+    return '\u0641\u0639\u0627\u0644';
+  }
+
+  const statusWords = ['\u0641\u0639\u0627\u0644', 'active', 'used', 'expired', '\u0645\u0646\u0642\u0636\u06cc', '\u0627\u0633\u062a\u0641\u0627\u062f\u0647'];
+  const looksLikeDate = /\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/.test(normalized);
+  if (looksLikeDate || statusWords.some((word) => normalized.toLowerCase().includes(word))) {
+    return normalized;
+  }
+
+  return '\u0641\u0639\u0627\u0644';
+};
+
+const findBusinessProfileForGift = (gift) => {
+  if (isPrimitiveValue(gift)) return null;
+
+  const collection = gift?.collection || gift?.business || gift?.brand || gift?.code?.collection;
+  const directCollectionId = firstValue(gift, ['collection_id', 'collectionId', 'business_id', 'businessId']);
+  const deepCollectionId = getDeepValue(gift, ['collection_id', 'collectionId', 'business_id', 'businessId', 'id']);
+  const names = [
+    typeof collection === 'string' ? collection : '',
+    collection && typeof collection === 'object' ? firstValue(collection, ['prefix', 'slug', 'name', 'title', 'business_name', 'collection_name']) : '',
+    cleanReportText(getDeepValue(gift, ['prefix', 'slug', 'collection_name', 'collectionName', 'business_name', 'businessName', 'brand', 'name']))
+  ].filter(Boolean).map(normalizeComparable);
+
+  const byName = businessProfiles.find((profile) => {
+    const aliases = Array.isArray(profile.aliases) ? profile.aliases : [];
+    const profileNames = [profile.title, profile.shortTitle, profile.id, profile.slug, ...aliases].filter(Boolean).map(normalizeComparable);
+    return names.some((name) => profileNames.some((profileName) => name && profileName && (name.includes(profileName) || profileName.includes(name))));
+  });
+
+  if (byName) return byName;
+
+  return businessProfiles.find((profile) => {
+    const profileIds = [profile.collectionId, profile.id, profile.slug].filter(Boolean).map(String);
+    return [directCollectionId, deepCollectionId].filter(Boolean).some((id) => profileIds.includes(String(id)));
+  });
+};
+
+const getGiftCollectionName = (gift, matchedProfile) => {
+  if (isPrimitiveValue(gift)) return matchedProfile?.title || '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641';
+
+  const collection = gift?.collection || gift?.business || gift?.brand || gift?.code?.collection;
+  if (typeof collection === 'string') return cleanReportText(collection);
+  return cleanReportText((collection && typeof collection === 'object' ? firstValue(collection, ['name', 'title', 'business_name', 'collection_name', 'prefix']) : '') ||
+    getDeepValue(gift, ['collection_name', 'collectionName', 'business_name', 'businessName', 'brand_name', 'brandName', 'prefix']) ||
+    matchedProfile?.title ||
+    '\u0645\u062c\u0645\u0648\u0639\u0647 \u06a9\u06cc \u0645\u06cc\u0627\u06cc');
+};
+
+const getGiftImage = (gift, matchedProfile) => {
+  if (isPrimitiveValue(gift)) return matchedProfile?.image || matchedProfile?.bannerImage || '';
+
+  const image = getDeepValue(gift, ['profile_image', 'profileImage', 'banner_image', 'bannerImage', 'image', 'images', 'logo', 'logo_url', 'image_url']);
+  return normalizeMediaUrl(image || matchedProfile?.image || matchedProfile?.bannerImage || '');
+};
+
+const normalizeGift = (gift, index) => {
+  const primitiveCode = isPrimitiveValue(gift) ? String(gift) : '';
+  const matchedProfile = findBusinessProfileForGift(gift);
+  const collectionName = getGiftCollectionName(gift, matchedProfile);
+  const rawCode = primitiveCode || getDeepValue(gift, ['code', 'discount_code', 'discountCode', 'coupon_code', 'couponCode', 'token']);
+  const code = isValidDiscountCode(rawCode) ? cleanReportText(rawCode) : '';
+  const rawTitle = cleanReportText(getDeepValue(gift, ['title', 'gift_title', 'giftTitle', 'discount_title', 'discountTitle', 'code_title', 'codeTitle']));
+  const title = rawTitle || collectionName || '\u0647\u062f\u06cc\u0647 \u0641\u0639\u0627\u0644';
+  const time = normalizeGiftStatus(getDeepValue(gift, ['expires_at', 'expire_at', 'expiresAt', 'used_at', 'created_at', 'date', 'starts_at', 'startsAt', 'status']), title, collectionName);
+
+  const apiImage = getGiftImage(gift, null);
+  const fallbackImage = getGiftImage({}, matchedProfile);
+
+  return {
+    id: getDeepValue(gift, ['id', 'discount_id', 'discountId', 'code_id', 'codeId']) || code || `${title}-${index}`,
+    title,
+    place: collectionName,
+    time: toPersianDigits(time),
+    image: apiImage || fallbackImage,
+    imageFallback: fallbackImage,
+    code,
+  };
+};
+
+function DashboardPage({ isVisible, sectionRequest, userProfile, onEditProfile, onLogout, onProfileFromReport }) {
   const [activeSection, setActiveSection] = useState('gifts');
-  const [hasCopiedReferral, setHasCopiedReferral] = useState(false);
+  const [activeGiftItems, setActiveGiftItems] = useState([]);
+  const [isReportLoading, setIsReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
 
-  const walletTotalLabel = useMemo(() => formatToman(walletData.totalBalance), [walletData.totalBalance]);
-  const chargedWalletsCount = walletData.wallets.filter((wallet) => wallet.balance > 0).length;
-  const walletStatusLabel = walletStatus === 'api' ? 'همگام با پایگاه داده' : 'اطلاعات آزمایشی تا زمان اتصال API';
+  const profileName = useMemo(() => getProfileName(userProfile), [userProfile]);
+  const profileMobile = toPersianDigits(getProfileField(userProfile, ['mobile', 'phone', 'phone_number', 'mobile_number']));
+  const profileEmail = getProfileField(userProfile, ['email']);
+  const profileBirthDate = toPersianDigits(getProfileField(userProfile, ['birthDate', 'birth_date', 'date', 'birthday']));
+  const profileIsComplete = isProfileComplete(userProfile);
+  const profileLevel = profileIsComplete ? 'اطلاعات تکمیل شده' : 'تکمیل نشده';
+  const profileScore = profileIsComplete ? 'تکمیل شده' : 'تکمیل نشده';
+  const profileAvatar = getProfileAvatar(userProfile) || getImageSrc(userAvatarImage);
 
-  const loadWallet = async () => {
+  const loadActiveGifts = async () => {
     try {
-      setIsWalletLoading(true);
-      const data = await getUserWallet();
-      setWalletData(data);
-      setWalletStatus(data.source === 'api' ? 'api' : 'mock');
+      setIsReportLoading(true);
+      setReportError('');
+      const data = await getDiscountReport();
+      const reportProfile = extractUserProfileFromReport(data);
+      if (reportProfile) {
+        onProfileFromReport?.(reportProfile);
+      }
+      setActiveGiftItems(extractActiveGiftsFromReport(data).map(normalizeGift));
     } catch (error) {
-      setWalletData(getMockWallet());
-      setWalletStatus('mock');
+      setActiveGiftItems([]);
+      setReportError(error.response?.data?.message || error.message || 'دریافت هدیه‌های فعال انجام نشد.');
     } finally {
-      setIsWalletLoading(false);
+      setIsReportLoading(false);
     }
   };
 
   useEffect(() => {
     if (isVisible) {
-      loadWallet();
+      loadActiveGifts();
     }
   }, [isVisible]);
 
-  const showSection = (section) => {
+  const scrollSectionIntoComfortView = (targetId, { alignToTop = false } = {}) => {
+    const target = document.getElementById(targetId);
+    if (!target) {
+      return;
+    }
+
+    if (alignToTop) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    const rect = target.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const pageYOffset = window.pageYOffset || document.documentElement.scrollTop || 0;
+    const maxScrollTop = Math.max(0, document.documentElement.scrollHeight - viewportHeight);
+    const topLimit = 96;
+    const bottomLimit = 48;
+    const lowerRevealLimit = viewportHeight - bottomLimit;
+    const lowerStartLimit = lowerRevealLimit - 120;
+    let scrollDelta = 0;
+
+    if (rect.height <= viewportHeight - topLimit - bottomLimit && rect.bottom > lowerRevealLimit) {
+      scrollDelta = rect.bottom - lowerRevealLimit;
+    } else if (rect.top > lowerStartLimit) {
+      scrollDelta = rect.top - lowerStartLimit;
+    } else if (rect.top < topLimit) {
+      scrollDelta = rect.top - topLimit;
+    }
+
+    if (Math.abs(scrollDelta) > 4) {
+      const nextScrollTop = Math.min(Math.max(pageYOffset + scrollDelta, 0), maxScrollTop);
+      window.scrollTo({ top: nextScrollTop, behavior: 'smooth' });
+    }
+  };
+
+  const showSection = (section, { shouldScroll = true, alignToTop = false } = {}) => {
+    if (disabledSections.has(section)) {
+      setActiveSection('gifts');
+      return;
+    }
+
     setActiveSection(section);
+    if (!shouldScroll) {
+      return;
+    }
+
     window.setTimeout(() => {
       const isMobile = window.matchMedia?.('(max-width: 768px)').matches;
       const targetId = isMobile
-        ? section === 'wallet'
-          ? 'mobile-wallet'
-          : section === 'account'
-            ? 'mobile-account'
-            : 'mobile-dashboard-section'
+        ? section === 'account'
+          ? 'mobile-account'
+          : 'mobile-dashboard-section'
         : 'dashboard-active-section';
 
-      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollSectionIntoComfortView(targetId, { alignToTop: alignToTop && isMobile });
     }, 0);
   };
 
   useEffect(() => {
     if (isVisible && sectionRequest?.section) {
-      showSection(sectionRequest.section);
+      showSection(sectionRequest.section, { shouldScroll: true });
     }
   }, [isVisible, sectionRequest]);
-
-  const copyReferralCode = async () => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(REFERRAL_CODE);
-      }
-      setHasCopiedReferral(true);
-      window.setTimeout(() => setHasCopiedReferral(false), 1800);
-    } catch (error) {
-      setHasCopiedReferral(false);
-    }
-  };
 
   if (!isVisible) {
     return null;
   }
 
+  const renderActiveGifts = (mobile = false) => {
+    if (isReportLoading) {
+      return <p className="dashboard-empty-state">در حال دریافت هدیه‌های فعال...</p>;
+    }
+
+    if (reportError) {
+      return <p className="dashboard-empty-state">{reportError}</p>;
+    }
+
+    if (!activeGiftItems.length) {
+      return <p className="dashboard-empty-state">هدیه فعالی برای این حساب ثبت نشده است.</p>;
+    }
+
+    const listClass = mobile ? 'mobile-active-gifts-list' : 'active-gifts-grid';
+    const itemClass = mobile ? 'mobile-active-gift' : 'active-gift-card';
+
+    return (
+      <div className={listClass}>
+        {activeGiftItems.map((gift) => (
+          <article className={itemClass} key={gift.id}>
+            {gift.image ? <img src={gift.image} alt={gift.title} onError={(event) => handleGiftImageError(event, gift.imageFallback)} /> : <div className="active-gift-fallback"><Gift /></div>}
+            <div className="active-gift-fallback active-gift-fallback-broken"><Gift /></div>
+            <div>
+              <h3>{gift.title}</h3>
+              <p>{gift.code ? '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641' : gift.place}</p>
+              {gift.code ? <span dir="ltr">{gift.code}</span> : <span>{gift.time}</span>}
+            </div>
+          </article>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <section className="dashboard-page">
       <section className="mobile-dashboard">
         <section className="mobile-profile-card" id="mobile-account">
-          <img src={getImageSrc(userAvatarImage)} alt="عباس شایگان" />
+          <img src={profileAvatar} alt={profileName} />
           <div>
-            <h1>عباس شایگان</h1>
-            <button type="button">مشاهده پروفایل</button>
-          </div>
-        </section>
-
-        <section className="mobile-wallet-card" id="mobile-wallet">
-          <div className="mobile-wallet-head">
-            <span><Wallet /> کیف پول من</span>
-            <strong>{walletTotalLabel}</strong>
-          </div>
-          <small className="wallet-sync-note">{walletStatusLabel}</small>
-          <div className="mobile-wallet-list">
-            {walletData.wallets.map((wallet) => (
-              <article className="mobile-wallet-business" key={wallet.id}>
-                <img src={wallet.image} alt={wallet.title} />
-                <div>
-                  <h3>{wallet.title}</h3>
-                  <p>{wallet.balanceLabel}</p>
-                </div>
-              </article>
-            ))}
+            <h1>{profileName}</h1>
+            <button type="button" onClick={onEditProfile}>تکمیل / ویرایش اطلاعات</button>
           </div>
         </section>
 
@@ -120,48 +381,15 @@ function DashboardPage({ isVisible, sectionRequest, onLogout }) {
             <section className="mobile-section-card">
               <div className="mobile-section-head">
                 <h2>هدیه‌های فعال من</h2>
-                <span>{activeGifts.length} هدیه</span>
+                <span>{activeGiftItems.length} هدیه</span>
               </div>
-              <div className="mobile-active-gifts-list">
-                {activeGifts.map((gift) => (
-                  <article className="mobile-active-gift" key={gift.title}>
-                    <img src={gift.image} alt={gift.title} />
-                    <div>
-                      <h3>{gift.title}</h3>
-                      <p>{gift.place}</p>
-                      <span>{gift.time}</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {activeSection === 'processes' && (
-            <section className="mobile-section-card">
-              <div className="mobile-section-head">
-                <h2>فرآیندها</h2>
-                <span>۳ فعال</span>
-              </div>
-              <div className="mobile-process-list">
-                <article><Clock3 /><div><h3>در انتظار تایید خرید ایبامو</h3><p>پس از تایید مجموعه، کیف پول ایبامو شارژ می‌شود.</p></div></article>
-                <article><ShieldCheck /><div><h3>کش‌بک رستوران ملل</h3><p>اعتبار بعد از ثبت نهایی سفارش اضافه می‌شود.</p></div></article>
-                <article><Check /><div><h3>هدیه باستانی</h3><p>کد هدیه آماده استفاده است.</p></div></article>
-              </div>
-            </section>
-          )}
-
-          {activeSection === 'referral' && (
-            <section className="mobile-section-card mobile-referral-card">
-              <h2>کد معرف شما</h2>
-              <strong>{REFERRAL_CODE}</strong>
-              <button type="button" onClick={copyReferralCode}>{hasCopiedReferral ? 'کپی شد' : 'اشتراک گذاری'}</button>
+              {renderActiveGifts(true)}
             </section>
           )}
         </section>
 
         <section className="mobile-profile-menu">
-          {mobileProfileLinks.map(({ title, icon: Icon }) => {
+          {mobileProfileLinks.filter(isEnabledDashboardItem).map(({ title, icon: Icon }) => {
             const section = getActionSection(title);
 
             return (
@@ -185,16 +413,16 @@ function DashboardPage({ isVisible, sectionRequest, onLogout }) {
 
       <section className="dashboard-hero desktop-dashboard-block" id="dashboard-account">
         <div className="hero-lines" />
-        <img className="dashboard-avatar" src={getImageSrc(userAvatarImage)} alt="عباس شایگان" />
+        <img className="dashboard-avatar" src={profileAvatar} alt={profileName} />
         <div className="dashboard-user-copy">
-          <h1><Crown /> عباس شایگان</h1>
-          <p>سطح شما: <span>طلایی</span></p>
-          <strong>۲۸,۵۰۰ امتیاز</strong>
+          <h1><Crown /> {profileName}</h1>
+          <p>سطح شما: <span>{profileLevel}</span></p>
+          <strong>{profileScore}</strong>
         </div>
       </section>
 
       <section className="dashboard-actions desktop-dashboard-block" aria-label="بخش‌های داشبورد">
-        {dashboardActions.map(({ title, icon: Icon }) => {
+        {dashboardActions.filter(isEnabledDashboardItem).map(({ title, icon: Icon }) => {
           const section = getActionSection(title);
 
           return (
@@ -217,69 +445,40 @@ function DashboardPage({ isVisible, sectionRequest, onLogout }) {
           <section className="panel account-panel">
             <div className="panel-head-row">
               <h2>اطلاعات حساب</h2>
-              <span className="dashboard-section-badge">فعال</span>
+              <button className="dashboard-inline-action" type="button" onClick={onEditProfile}>
+                <PencilLine />
+                <span>ویرایش اطلاعات</span>
+              </button>
             </div>
             <div className="account-info-grid">
-              <article><span>نام کاربر</span><strong>عباس شایگان</strong></article>
-              <article><span>سطح عضویت</span><strong>طلایی</strong></article>
-              <article><span>امتیاز کل</span><strong>۲۸,۵۰۰</strong></article>
-            </div>
-          </section>
-        )}
-
-        {activeSection === 'wallet' && (
-          <section className="panel wallet-panel" id="wallet">
-            <div className="wallet-summary">
-              <div>
-                <span className="wallet-eyebrow">کیف پول اختصاصی کسب‌وکارها</span>
-                <h2><Wallet /> کیف پول من</h2>
-                <p>اعتبار هر کسب‌وکار جداگانه شارژ می‌شود و فقط برای همان مجموعه قابل استفاده است.</p>
-                <div className="wallet-sync-row">
-                  <span className="wallet-sync-note">{walletStatusLabel}</span>
-                  <button className="wallet-refresh-btn" type="button" onClick={loadWallet} disabled={isWalletLoading}>
-                    <RefreshCw />
-                    {isWalletLoading ? 'در حال بروزرسانی' : 'بروزرسانی'}
-                  </button>
+              <article>
+                <span className="account-info-icon"><UserRound /></span>
+                <div>
+                  <span>{'\u0646\u0627\u0645 \u06a9\u0627\u0631\u0628\u0631'}</span>
+                  <strong>{profileName}</strong>
                 </div>
-              </div>
-              <div className="wallet-total-card">
-                <span>موجودی کل قابل مشاهده</span>
-                <strong>{walletTotalLabel}</strong>
-                <small>{chargedWalletsCount} کیف پول شارژ شده</small>
-              </div>
-            </div>
-
-            <div className="wallet-business-grid">
-              {walletData.wallets.map((wallet) => (
-                <article className={`wallet-business-card ${wallet.balance === 0 ? 'is-empty' : ''}`} key={wallet.id}>
-                  <img src={wallet.image} alt={wallet.title} />
-                  <div>
-                    <h3>{wallet.title}</h3>
-                    <strong>{wallet.balanceLabel}</strong>
-                    <span>{wallet.status}</span>
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            <div className="wallet-history">
-              <h3>تراکنش‌های اخیر کیف پول</h3>
-              {walletData.transactions.map((transaction) => {
-                const isCredit = transaction.amount.startsWith('+');
-                const Icon = isCredit ? ArrowDownLeft : ArrowUpRight;
-
-                return (
-                  <article className="wallet-history-item" key={`${transaction.business}-${transaction.date}-${transaction.amount}`}>
-                    <Icon />
-                    <div>
-                      <strong>{transaction.business}</strong>
-                      <span>{transaction.type}</span>
-                    </div>
-                    <p>{transaction.date}</p>
-                    <b className={isCredit ? 'is-credit' : 'is-debit'}>{transaction.amount}</b>
-                  </article>
-                );
-              })}
+              </article>
+              <article>
+                <span className="account-info-icon"><Phone /></span>
+                <div>
+                  <span>{'\u0634\u0645\u0627\u0631\u0647 \u062a\u0645\u0627\u0633'}</span>
+                  <strong dir="ltr">{profileMobile || '\u062b\u0628\u062a \u0646\u0634\u062f\u0647'}</strong>
+                </div>
+              </article>
+              <article>
+                <span className="account-info-icon"><Mail /></span>
+                <div>
+                  <span>{'\u0627\u06cc\u0645\u06cc\u0644'}</span>
+                  <strong dir="ltr">{profileEmail || '\u062b\u0628\u062a \u0646\u0634\u062f\u0647'}</strong>
+                </div>
+              </article>
+              <article>
+                <span className="account-info-icon"><CalendarDays /></span>
+                <div>
+                  <span>{'\u062a\u0627\u0631\u06cc\u062e \u062a\u0648\u0644\u062f'}</span>
+                  <strong>{profileBirthDate || '\u062b\u0628\u062a \u0646\u0634\u062f\u0647'}</strong>
+                </div>
+              </article>
             </div>
           </section>
         )}
@@ -288,90 +487,14 @@ function DashboardPage({ isVisible, sectionRequest, onLogout }) {
           <section className="panel active-gifts-panel" id="all-active-gifts">
             <div className="panel-head-row">
               <h2>هدیه‌های فعال من</h2>
-              <button type="button" className="dashboard-inline-action">مشاهده همه</button>
+              <button type="button" className="dashboard-inline-action" onClick={loadActiveGifts}>بروزرسانی</button>
             </div>
-            <div className="active-gifts-grid">
-              {activeGifts.map((gift) => (
-                <article className="active-gift-card" key={gift.title}>
-                  <img src={gift.image} alt={gift.title} />
-                  <div>
-                    <h3>{gift.title}</h3>
-                    <p>{gift.place}</p>
-                    <span>{gift.time}</span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {activeSection === 'processes' && (
-          <section className="panel process-panel">
-            <div className="panel-head-row">
-              <h2>فرآیندها و کش‌بک‌ها</h2>
-              <span className="dashboard-section-badge">۳ مورد فعال</span>
-            </div>
-            <div className="process-list">
-              <article><Clock3 /><div><h3>در انتظار تایید خرید ایبامو</h3><p>پس از تایید مجموعه، کیف پول ایبامو شارژ می‌شود.</p></div><span>در حال بررسی</span></article>
-              <article><ShieldCheck /><div><h3>کش‌بک رستوران ملل</h3><p>اعتبار پس از ثبت نهایی سفارش به کیف پول همان مجموعه اضافه می‌شود.</p></div><span>فعال</span></article>
-              <article><Check /><div><h3>هدیه باستانی</h3><p>کد هدیه دریافت شده و آماده استفاده است.</p></div><span>آماده استفاده</span></article>
-            </div>
-          </section>
-        )}
-
-        {activeSection === 'referral' && (
-          <section className="invite-card referral-panel">
-            <h2><ChevronLeft /> دعوت از دوستان</h2>
-            <p>دوستان خود را دعوت کنید و امتیاز بگیرید</p>
-            <div className="invite-row">
-              <div className="invite-code">{REFERRAL_CODE}</div>
-              <div>
-                <span>کد معرف شما</span>
-                <button type="button" onClick={copyReferralCode}>
-                  {hasCopiedReferral ? <Check /> : <Copy />}
-                  {hasCopiedReferral ? 'کپی شد' : 'اشتراک گذاری'}
-                </button>
-              </div>
-            </div>
+            {renderActiveGifts(false)}
           </section>
         )}
       </div>
-
-      <section className="dashboard-bottom-grid desktop-dashboard-block">
-        <section className="panel history-panel">
-          <h2>تاریخچه هدایا</h2>
-          <div className="history-list">
-            {giftHistory.map((item) => (
-              <article className="history-item" key={item.title}>
-                <img src={item.image} alt={item.title} />
-                <div>
-                  <h3>{item.title}</h3>
-                  <p>{item.date}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <div className="dashboard-side-stack">
-          <section className="panel stats-panel">
-            <h2>آمار شما</h2>
-            <div className="stats-row">
-              {stats.map((stat) => (
-                <div className="stat-item" key={stat.label}>
-                  <span>{stat.label}</span>
-                  <strong>{stat.value}</strong>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-      </section>
     </section>
   );
 }
 
 export default DashboardPage;
-
-
-
