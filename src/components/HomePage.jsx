@@ -1,4 +1,5 @@
-﻿import { useEffect, useRef, useState } from 'react';
+﻿import { faqs } from '../data/faqData';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
@@ -1109,6 +1110,7 @@ function HomePage({ isDarkMode = false, onToggleTheme }) {
   const [pendingOffer, setPendingOffer] = useState(null);
   const [discountPopup, setDiscountPopup] = useState(null);
   const [isRequestingDiscount, setIsRequestingDiscount] = useState(false);
+  const [requestingOfferId, setRequestingOfferId] = useState(null);
   const [expandedOfferIds, setExpandedOfferIds] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const bannerItems = mergeExtraBanners(homeData.banners).filter((banner) => isApiBannerImage(banner?.image));
@@ -1779,6 +1781,7 @@ useEffect(() => {
     }
 
     try {
+      setRequestingOfferId(offer.id);
       setIsRequestingDiscount(true);
       const data = await requestDiscountCode(offer, { mobile: loadCachedHomeMobile() });
       const receivedCode = getDiscountCode(data, offer) || '';
@@ -1798,6 +1801,7 @@ useEffect(() => {
       });
     } finally {
       setIsRequestingDiscount(false);
+      setRequestingOfferId(null);
     }
   };
 
@@ -1854,7 +1858,7 @@ useEffect(() => {
         </div>
         <div className="home-offer-footer">
           <button type="button" onClick={() => handleReceiveOffer(offer)} disabled={isRequestingDiscount || isInactive}>
-            {isRequestingDiscount ? t.wait : '\u06a9\u062f \u062e\u0631\u06cc\u062f'}
+            {requestingOfferId === offer.id ? t.wait : '\u06a9\u062f \u062e\u0631\u06cc\u062f'}
           </button>
         </div>
       </article>
@@ -2059,22 +2063,7 @@ useEffect(() => {
         </section>
 
 
-        {vipOffers.length ? (
-          <section className="home-section home-offer-section home-vip-section" id="vip-gifts">
-            <div className="home-section-head">
-              <div>
-                <span>پیشنهادهای ویژه</span>
-                <h2>کارت‌های ویژه</h2>
-              </div>
-              <button className="home-text-action" type="button" onClick={() => document.getElementById('gifts')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-                مشاهده بقیه کارت‌ها
-              </button>
-            </div>
-            <div className="home-offer-grid home-vip-offer-grid">
-              {vipOffers.map(renderOfferCard)}
-            </div>
-          </section>
-        ) : null}
+        
         <section className="home-hero-grid">
           <div className="home-banner-slider" aria-label={t.bannerAlt}>
             <div
@@ -2133,6 +2122,34 @@ useEffect(() => {
             </div>
           </aside>
         </section>
+
+        {vipOffers.length ? (
+  <section className="home-section home-offer-section home-vip-section" id="vip-gifts">
+    <div className="home-section-head">
+      <div>
+        <span>پیشنهادهای ویژه</span>
+
+      </div>
+
+      <button
+        className="home-text-action"
+        type="button"
+        onClick={() =>
+          document.getElementById('gifts')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          })
+        }
+      >
+        مشاهده بقیه کارت‌ها
+      </button>
+    </div>
+
+    <div className="home-offer-grid home-vip-offer-grid">
+      {vipOffers.map(renderOfferCard)}
+    </div>
+  </section>
+     ) : null}
 
         <section className="home-section" id="brands">
           <div className="home-section-head">
@@ -2330,18 +2347,62 @@ useEffect(() => {
       )}
 
       {discountPopup && (
-        <div className="home-popup-backdrop" onClick={() => setDiscountPopup(null)}>
-          <section className="home-discount-popup" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="home-popup-close" onClick={() => setDiscountPopup(null)}>{t.close}</button>
-            <span className="home-eyebrow">{discountPopup.offer?.brand}</span>
-            <h2>{discountPopup.code ? t.discountCode : discountPopup.offer?.title}</h2>
-            <div className={`home-discount-code ${discountPopup.code ? '' : 'is-empty'}`}>
-              {discountPopup.code || '\u06a9\u062f\u06cc \u062f\u0631\u06cc\u0627\u0641\u062a \u0646\u0634\u062f'}
-            </div>
-            <p>{discountPopup.message}</p>
-          </section>
-        </div>
-      )}
+  <div className="home-popup-backdrop" onClick={() => setDiscountPopup(null)}>
+    <section
+      className="home-discount-popup"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        className="home-popup-close"
+        onClick={() => setDiscountPopup(null)}
+      >
+        {t.close}
+      </button>
+
+      <span className="home-eyebrow">
+        {discountPopup.offer?.brand}
+      </span>
+
+      <h2>
+        {discountPopup.code
+          ? t.discountCode
+          : discountPopup.offer?.title}
+      </h2>
+
+      <div
+        className={`home-discount-code ${
+          discountPopup.code ? '' : 'is-empty'
+        }`}
+      >
+        {discountPopup.code || 'کدی دریافت نشد'}
+      </div>
+
+      {discountPopup.code ? (
+        <button
+          type="button"
+          className="home-discount-copy-button"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(discountPopup.code);
+            } catch (error) {
+              const textArea = document.createElement('textarea');
+              textArea.value = discountPopup.code;
+              document.body.appendChild(textArea);
+              textArea.select();
+              document.execCommand('copy');
+              document.body.removeChild(textArea);
+            }
+          }}
+        >
+          کپی کد
+        </button>
+      ) : null}
+
+      <p>{discountPopup.message}</p>
+    </section>
+  </div>
+)}
     </main>
   );
 }

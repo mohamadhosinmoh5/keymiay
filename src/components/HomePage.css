@@ -11091,3 +11091,27 @@ html.theme-dark .home-shell .home-section#discount-only > .home-offer-grid .home
     height: 15px !important;
   }
 }
+.home-discount-copy-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 18px;
+  border: 1px solid #7433a3;
+  border-radius: 12px;
+  background: #7433a3;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 6px 16px rgba(116, 51, 163, 0.22);
+}
+
+.home-discount-copy-button:hover {
+  background: #eb078a;
+  border-color: #eb078a;
+  box-shadow: 0 8px 20px rgba(235, 7, 138, 0.25);
+}
+
+.home-discount-copy-button:active {
+  transform: scale(0.98);
+}
