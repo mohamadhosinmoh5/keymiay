@@ -134,15 +134,25 @@ function App({ initialPage = "business", initialDashboardSection = null, isDarkM
       setLoginError("ارسال کد انجام نشد.");
       return false;
     } catch (error) {
-      console.log(error);
+  console.log(error);
 
-      setLoginError(
-        error.response?.data?.message ||
-          "خطا در ارتباط با سرور"
-      );
+  const message =
+    error.response?.data?.message ||
+    error.message ||
+    "";
 
-      return false;
-    } finally {
+  if (/mobile field.*invalid/i.test(message)) {
+  setLoginError("شماره موبایل واردشده معتبر نیست.");
+} else if (/mobile field.*required/i.test(message)) {
+  setLoginError("لطفاً شماره موبایل خود را وارد کنید.");
+} else {
+  setLoginError("خطایی رخ داده است. لطفاً دوباره تلاش کنید.");
+  }
+
+  return false;
+}
+    
+    finally {
       setIsLoading(false);
     }
   };
@@ -232,20 +242,12 @@ function App({ initialPage = "business", initialDashboardSection = null, isDarkM
     }
 
     if (id === "shop") {
-      setDashboardSectionRequest(null);
-      setCurrentPage("business");
-      scrollToSection("restaurant-top");
+      window.location.href = "/#brands";
       return;
     }
 
     if (id === "gifts") {
-      if (!isLoggedIn) {
-        openLogin();
-        return;
-      }
-
-      setDashboardSectionRequest({ section: "gifts", createdAt: Date.now() });
-      setCurrentPage("dashboard");
+      window.location.href = "/gifts";
       return;
     }
 
@@ -265,7 +267,7 @@ function App({ initialPage = "business", initialDashboardSection = null, isDarkM
     }
   };
 
-  const mobileBottomCurrentPage = currentPage === "dashboard" && dashboardSectionRequest?.section === "gifts" ? "gifts" : currentPage;
+  const mobileBottomCurrentPage = currentPage;
 
   const persistUserProfile = (profile, options = {}) => {
     if (!profile) return;
@@ -410,8 +412,6 @@ function App({ initialPage = "business", initialDashboardSection = null, isDarkM
 }
 
 export default App;
-
-
 
 
 

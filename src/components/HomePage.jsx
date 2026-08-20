@@ -5,8 +5,13 @@ import { useRouter } from 'next/router';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Check,
+  Copy,
   Gift,
+  LayoutDashboard,
   LogIn,
+  LogOut,
   Moon,
   MousePointerClick,
   Info,
@@ -23,9 +28,9 @@ import {
 import LoginModal from './LoginModal';
 import MobileBottomNav from './MobileBottomNav';
 import { sendOtp, verifyOtp } from '../api/auth';
-import { getDiscountCards, getHomePageData, requestDiscountCode } from '../api/home';
-import { getTokenFromAuthResponse, getUserTypeFromAuthResponse, hasAuthToken, setAuthToken } from '../helper/authCookie';
-import { brandAssets } from '../data/brandAssets';
+import { getDiscountCards, requestDiscountCode } from '../api/home';
+import { clearAuthToken, getTokenFromAuthResponse, getUserTypeFromAuthResponse, hasAuthToken, setAuthToken } from '../helper/authCookie';
+import { brandAssets, defaultProfileAvatar } from '../data/brandAssets';
 import InstallAppButton from '../components/InstallAppButton';
 
 const t = {
@@ -174,7 +179,9 @@ const categoryIcons = {
 
 const normalizeList = (value, fallback = []) => (Array.isArray(value) && value.length ? value : fallback);
 
-const firstValue = (item, keys) => keys.map((key) => item?.[key]).find(Boolean);
+const firstValue = (item, keys) => keys
+  .map((key) => item?.[key])
+  .find((value) => value !== undefined && value !== null && value !== '');
 const firstDefinedValue = (item, keys) => {
   for (const key of keys) {
     if (item?.[key] !== undefined && item?.[key] !== null && item?.[key] !== '') {
@@ -713,7 +720,32 @@ const mergeHomeAndDiscountData = (homePayload, discountPayload) => {
     ...normalizedHome,
     banners: normalizedDiscount.banners.length ? normalizedDiscount.banners:normalizedHome.banners,
     stories: discountStories.length ? discountStories : homeStories.length ? homeStories : offerStories,
-    brands: discountOffers.length ? buildBrandsFromOffers(discountOffers) : normalizedHome.brands,
+    brands: (() => {
+  const brands = discountOffers.length
+    ? buildBrandsFromOffers(discountOffers)
+    : normalizedHome.brands;
+
+  const hasMelal = brands.some(
+    (brand) =>
+      brand.businessId === 'melal' ||
+      getKnownBusinessKey(brand) === 'melal'
+  );
+
+  if (hasMelal) {
+    return brands;
+  }
+
+  return [
+    {
+      title: t.restaurant,
+      businessId: 'melal',
+      collectionId: '',
+      image: '/home/img/restaurant-melal.png',
+      href: '/restaurant',
+    },
+    ...brands,
+  ];
+})(),
     offers: mergeOfferLists(normalizedHome.offers, discountOffers),
   };
 };
@@ -779,6 +811,43 @@ const saveCachedHomeMobile = (mobile) => {
     // Mobile cache is only used to prefill code generation requests.
   }
 };
+
+const getCachedHomeProfile = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const cachedProfile = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+    return cachedProfile ? JSON.parse(cachedProfile) : null;
+  } catch {
+    window.localStorage.removeItem(PROFILE_STORAGE_KEY);
+    return null;
+  }
+};
+
+const getProfileDisplayName = (profile = {}) => {
+  const firstName = firstValue(profile, ['firstName', 'first_name', 'name']);
+  const lastName = firstValue(profile, ['lastName', 'last_name', 'family', 'family_name']);
+  const fullName = firstValue(profile, ['fullName', 'full_name', 'display_name', 'displayName', 'username']);
+  return [firstName, lastName].filter(Boolean).join(' ') || fullName || 'کاربر کی میای';
+};
+
+const getProfileShortDisplayName = (profile = {}) =>
+  firstValue(profile, ['firstName', 'first_name', 'name']) || getProfileDisplayName(profile);
+
+const getProfileAvatar = (profile = {}) =>
+  normalizeMediaUrl(firstValue(profile, [
+    'avatarPreview',
+    'avatar_preview',
+    'avatar',
+    'avatar_url',
+    'avatarUrl',
+    'profile_image',
+    'profileImage',
+    'profile_photo',
+    'profilePhoto',
+    'image',
+    'photo',
+  ])) || defaultProfileAvatar;
 
 const hasUsableHomeData = (data) => Boolean(data?.stories?.length || data?.offers?.length || data?.brands?.length || data?.banners?.length);
 const normalizeHomeData = (payload) => {
@@ -977,6 +1046,37 @@ const getDiscountCode = (data, offer) =>
 const getDiscountMessage = (data) =>
   findNestedValue(data, ['message', 'text', 'description']);
 
+const isTechnicalMessage = (message) =>
+  /attempt to|property|undefined|null|exception|stack|trace|sql|syntax|token|server error/i.test(String(message || ''));
+
+const getPublicApiMessage = (message, fallback) => {
+  const normalizedMessage = String(message || '').trim();
+
+  if (!normalizedMessage || isTechnicalMessage(normalizedMessage)) {
+    return fallback;
+  }
+
+  return normalizedMessage;
+};
+
+const getPublicErrorMessage = (error, fallback) => {
+  const status = error?.response?.status;
+
+  if (status === 401 || status === 403) {
+    return 'برای دریافت کد، لطفاً دوباره وارد حساب کاربری شوید.';
+  }
+
+  if (status === 404) {
+    return 'برای این تخفیف در حال حاضر کدی ثبت نشده است.';
+  }
+
+  if (status === 422 || status === 400) {
+    return fallback;
+  }
+
+  return fallback;
+};
+
 const toPersianDigits = (value) =>
   String(value).replace(/[0-9]/g, (digit) => String.fromCharCode(0x06f0 + Number(digit)));
 
@@ -1108,10 +1208,13 @@ function HomePage({ isDarkMode = false, onToggleTheme }) {
   const [loginError, setLoginError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
   const [activeStoryIndex, setActiveStoryIndex] = useState(null);
   const [storyDurationMs, setStoryDurationMs] = useState(4200);
   const [pendingOffer, setPendingOffer] = useState(null);
   const [discountPopup, setDiscountPopup] = useState(null);
+  const [isDiscountCodeCopied, setIsDiscountCodeCopied] = useState(false);
   const [isRequestingDiscount, setIsRequestingDiscount] = useState(false);
   const [requestingOfferId, setRequestingOfferId] = useState(null);
   const [expandedOfferIds, setExpandedOfferIds] = useState({});
@@ -1163,9 +1266,9 @@ function HomePage({ isDarkMode = false, onToggleTheme }) {
       return undefined;
     }
 
-    const rows = Array.from(document.querySelectorAll(
-      '.home-shell .home-stories, .home-shell .home-brand-grid, .home-shell .home-offer-section .home-offer-grid, .home-shell .home-section#gifts > .home-offer-grid, .home-shell #discount-only > .home-offer-grid'
-    ));
+ const rows = Array.from(document.querySelectorAll(
+  '.home-shell .home-stories, .home-shell .home-brand-grid'
+));
     const cleanup = [];
 
     rows.forEach((row) => {
@@ -1406,7 +1509,119 @@ function HomePage({ isDarkMode = false, onToggleTheme }) {
 
     return () => cleanup.forEach((dispose) => dispose());
   }, [homeData.stories, homeData.brands, homeData.offers, vipOffers.length, visibleGiftDiscountOffers.length, discountOnlyOffers.length, router]);
+useEffect(() => {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
 
+  const rows = Array.from(
+    document.querySelectorAll(
+      '#vip-gifts .home-offer-grid, ' +
+      '#gifts .home-offer-grid, ' +
+      '#discount-only .home-offer-grid'
+    )
+  );
+
+  const cleanups = [];
+
+  rows.forEach((row) => {
+    const cards = Array.from(
+      row.querySelectorAll('.home-offer-card')
+    );
+
+    if (cards.length <= 1) {
+      return;
+    }
+
+    let timer;
+    let paused = false;
+
+    const getCurrentIndex = () => {
+      const rowRect = row.getBoundingClientRect();
+      const center = rowRect.left + rowRect.width / 2;
+
+      let closestIndex = 0;
+      let closestDistance = Infinity;
+
+      cards.forEach((card, index) => {
+        const rect = card.getBoundingClientRect();
+        const cardCenter = rect.left + rect.width / 2;
+        const distance = Math.abs(cardCenter - center);
+
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestIndex = index;
+        }
+      });
+
+      return closestIndex;
+    };
+
+    const goToNextCard = () => {
+      if (paused || document.hidden) {
+        return;
+      }
+
+      const currentIndex = getCurrentIndex();
+      const nextIndex = (currentIndex + 1) % cards.length;
+
+     const rowRect = row.getBoundingClientRect();
+const cardRect = cards[nextIndex].getBoundingClientRect();
+
+const horizontalDistance =
+  cardRect.left +
+  cardRect.width / 2 -
+  (rowRect.left + rowRect.width / 2);
+
+row.scrollBy({
+  left: horizontalDistance,
+  top: 0,
+  behavior: 'smooth',
+});
+    };
+
+    const start = () => {
+      window.clearInterval(timer);
+
+      timer = window.setInterval(() => {
+        goToNextCard();
+      }, 3500);
+    };
+
+    const pause = () => {
+      paused = true;
+    };
+
+    const resume = () => {
+      paused = false;
+      start();
+    };
+
+    row.addEventListener('pointerdown', pause);
+    row.addEventListener('pointerup', resume);
+    row.addEventListener('pointercancel', resume);
+    row.addEventListener('touchstart', pause, { passive: true });
+    row.addEventListener('touchend', resume);
+
+    start();
+
+    cleanups.push(() => {
+      window.clearInterval(timer);
+
+      row.removeEventListener('pointerdown', pause);
+      row.removeEventListener('pointerup', resume);
+      row.removeEventListener('pointercancel', resume);
+      row.removeEventListener('touchstart', pause);
+      row.removeEventListener('touchend', resume);
+    });
+  });
+
+  return () => cleanups.forEach((cleanup) => cleanup());
+}, [
+  vipOffers.length,
+  visibleGiftDiscountOffers.length,
+  discountOnlyOffers.length,
+]);
   useEffect(() => {
     if (typeof window === 'undefined') {
       return undefined;
@@ -1454,7 +1669,9 @@ function HomePage({ isDarkMode = false, onToggleTheme }) {
   }, [homeData.brands.length]);
 useEffect(() => {
   const checkAuth = () => {
-    setIsLoggedIn(hasAuthToken());
+    const loggedIn = hasAuthToken();
+    setIsLoggedIn(loggedIn);
+    setUserProfile(loggedIn ? getCachedHomeProfile() : null);
   };
 
   checkAuth();
@@ -1474,31 +1691,22 @@ useEffect(() => {
       setHomeData(cachedHomeData);
     }
 
-    Promise.allSettled([getHomePageData(), getDiscountCards()]).then(([homeResult, discountResult]) => {
+    getDiscountCards().then((discountPayload) => {
       if (!isMounted) {
         return;
       }
 
-      const hasFreshHome = homeResult.status === 'fulfilled';
-      const hasFreshDiscounts = discountResult.status === 'fulfilled';
+      const homePayload = cachedHomeData || emptyHomeData;
+      const nextHomeData = mergeHomeAndDiscountData(homePayload, discountPayload);
 
-      if (!hasFreshHome && !hasFreshDiscounts) {
-        setHomeData(cachedHomeData && hasUsableHomeData(cachedHomeData) ? cachedHomeData : emptyHomeData);
+      setHomeData(nextHomeData);
+      saveCachedHomeData(nextHomeData);
+    }).catch(() => {
+      if (!isMounted) {
         return;
       }
 
-      const homePayload = hasFreshHome ? homeResult.value : cachedHomeData || emptyHomeData;
-      const discountPayload = hasFreshDiscounts ? discountResult.value : null;
-      const nextHomeData = mergeHomeAndDiscountData(homePayload, discountPayload);
-      const stableHomeData = !hasFreshDiscounts && cachedHomeData?.offers?.length
-        ? { ...nextHomeData, offers: cachedHomeData.offers, stories: cachedHomeData.stories?.length ? cachedHomeData.stories : nextHomeData.stories }
-        : nextHomeData;
-
-      setHomeData(stableHomeData);
-
-      if (hasFreshDiscounts) {
-        saveCachedHomeData(stableHomeData);
-      }
+      setHomeData(cachedHomeData && hasUsableHomeData(cachedHomeData) ? cachedHomeData : emptyHomeData);
     });
 
     return () => {
@@ -1552,12 +1760,26 @@ useEffect(() => {
   const openAccount = () => {
     if (hasAuthToken()) {
       setIsLoggedIn(true);
+      setUserProfile(getCachedHomeProfile());
       router.push('/dashboard');
       return;
     }
 
     setIsLoggedIn(false);
+    setUserProfile(null);
     openLogin();
+  };
+
+  const handleHomeLogout = () => {
+    clearAuthToken();
+    setIsLoggedIn(false);
+    setIsUserMenuOpen(false);
+    setUserProfile(null);
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(PROFILE_STORAGE_KEY);
+      window.location.href = '/';
+    }
   };
 
   const spinStory = (title) => {
@@ -1728,8 +1950,20 @@ useEffect(() => {
       setLoginError(t.sendFailed);
       return false;
     } catch (error) {
-      setLoginError(error.response?.data?.message || t.serverError);
-      return false;
+  const message =
+    error.response?.data?.message ||
+    error.message ||
+    "";
+
+  if (/mobile.*invalid|mobile.*format/i.test(message)) {
+    setLoginError("شماره موبایل واردشده معتبر نیست.");
+  } else if (/mobile.*required/i.test(message)) {
+    setLoginError("لطفاً شماره موبایل خود را وارد کنید.");
+  } else {
+    setLoginError("خطایی رخ داده است. لطفاً دوباره تلاش کنید.");
+  }
+
+  return false;
     } finally {
       setIsLoading(false);
     }
@@ -1761,53 +1995,64 @@ useEffect(() => {
 
       router.push('/dashboard');
     } catch (error) {
-      setLoginError(error.response?.data?.message || error.message);
+      setLoginError(getPublicErrorMessage(error, 'ورود انجام نشد. لطفاً دوباره تلاش کنید.'));
     } finally {
       setIsLoading(false);
     }
   };
-  const handleReceiveOffer = async (offer, skipAuthCheck = false) => {
-    if (offer.isActive === false) {
-      setDiscountPopup({
-        offer,
-        code: '',
-        message: '\u0627\u06cc\u0646 \u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u062f\u0631 \u062d\u0627\u0644 \u062d\u0627\u0636\u0631 \u063a\u06cc\u0631\u0641\u0639\u0627\u0644 \u0627\u0633\u062a.',
-      });
-      return;
-    }
+ const handleReceiveOffer = async (offer, skipAuthCheck = false) => {
+  // کارت غیرفعال
+  if (offer.isActive === false) {
+    setDiscountPopup({
+      offer,
+      code: '',
+      message: 'این تخفیف در حال حاضر غیرفعال است.',
+    });
+    setIsDiscountCodeCopied(false);
+    return;
+  }
 
-    if (!skipAuthCheck && !hasAuthToken()) {
-      setIsLoggedIn(false);
-      setPendingOffer(offer);
-      openLogin();
-      return;
-    }
+  // بررسی لاگین
+  if (!skipAuthCheck && !hasAuthToken()) {
+    setIsLoggedIn(false);
+    setPendingOffer(offer);
+    openLogin();
+    return;
+  }
 
-    try {
-      setRequestingOfferId(offer.id);
-      setIsRequestingDiscount(true);
-      const data = await requestDiscountCode(offer, { mobile: loadCachedHomeMobile() });
-      const receivedCode = getDiscountCode(data, offer) || '';
+  try {
+    setRequestingOfferId(offer.id);
+    setIsRequestingDiscount(true);
 
-      setDiscountPopup({
-        offer,
-        code: receivedCode,
-        message: receivedCode
-          ? getDiscountMessage(data) || '\u06a9\u062f \u062a\u062e\u0641\u06cc\u0641 \u0628\u0627 \u0645\u0648\u0641\u0642\u06cc\u062a \u062f\u0631\u06cc\u0627\u0641\u062a \u0634\u062f.'
-          : getDiscountMessage(data) || '\u06a9\u062f\u06cc \u0627\u0632 \u0633\u0645\u062a API \u0628\u0631\u0646\u06af\u0634\u062a. \u0644\u0637\u0641\u0627 \u062f\u0648\u0628\u0627\u0631\u0647 \u062a\u0644\u0627\u0634 \u06a9\u0646\u06cc\u062f.',
-      });
-    } catch (error) {
-      setDiscountPopup({
-        offer,
-        code: '',
-        message: error.response?.data?.message || error.message || t.discountFailed,
-      });
-    } finally {
-      setIsRequestingDiscount(false);
-      setRequestingOfferId(null);
-    }
-  };
+    // درخواست کد از بک‌اند
+    const data = await requestDiscountCode(offer, {
+      mobile: loadCachedHomeMobile(),
+    });
 
+    // فقط کدی که واقعاً از API آمده نمایش داده شود
+    const receivedCode = getDiscountCode(data, offer) || '';
+
+    setDiscountPopup({
+      offer,
+      code: receivedCode,
+      message: receivedCode
+        ? getPublicApiMessage(getDiscountMessage(data), 'کد تخفیف با موفقیت دریافت شد.')
+        : getPublicApiMessage(getDiscountMessage(data), 'برای این تخفیف در حال حاضر کدی ثبت نشده است.'),
+    });
+    setIsDiscountCodeCopied(false);
+
+  } catch (error) {
+    setDiscountPopup({
+      offer,
+      code: '',
+      message: getPublicErrorMessage(error, 'امکان دریافت کد تخفیف وجود ندارد. لطفاً دوباره تلاش کنید.'),
+    });
+    setIsDiscountCodeCopied(false);
+  } finally {
+    setIsRequestingDiscount(false);
+    setRequestingOfferId(null);
+  }
+};
 
   const renderOfferCard = (offer, index) => {
     const isDebugVip = shouldPreviewVipOffer(offer, debugVipValue);
@@ -1841,7 +2086,7 @@ useEffect(() => {
           <span className={`home-offer-status ${isInactive ? 'is-inactive' : ''}`}>{offerStatus}</span>
         </div>
         <div className="home-offer-copy">
-          <span>{displayedOffer.brand}</span>
+          
           <h3>{displayedOffer.title}</h3>
           <div className="home-offer-benefits" aria-label="offer benefits">
             {offerBenefits.map((benefit) => (
@@ -1853,6 +2098,7 @@ useEffect(() => {
             <button
               className="home-offer-read-more"
               type="button"
+              aria-expanded={isDescriptionExpanded}
               onClick={() => setExpandedOfferIds((current) => ({ ...current, [offerKey]: !current[offerKey] }))}
             >
               {isDescriptionExpanded ? 'کمتر' : 'بیشتر'}
@@ -1860,7 +2106,7 @@ useEffect(() => {
           ) : null}
         </div>
         <div className="home-offer-footer">
-          <button type="button" onClick={() => handleReceiveOffer(offer)} disabled={isRequestingDiscount || isInactive}>
+          <button type="button" onClick={() => handleReceiveOffer(offer)} disabled={isRequestingDiscount}>
             {requestingOfferId === offer.id ? t.wait : '\u06a9\u062f \u062e\u0631\u06cc\u062f'}
           </button>
         </div>
@@ -1884,7 +2130,7 @@ useEffect(() => {
     }
 
     if (id === 'gifts') {
-      document.getElementById('gifts')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      router.push('/gifts');
       return;
     }
 
@@ -1894,6 +2140,11 @@ useEffect(() => {
     }
 
     router.push('/dashboard');
+  };
+
+  const scrollToOtherCards = () => {
+    const target = document.getElementById('gifts') || document.getElementById('discount-only');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleBrandClick = (event, href) => {
@@ -1945,13 +2196,13 @@ useEffect(() => {
         <header className="topbar d-flex align-items-center justify-content-between">
           <div className="d-flex align-items-center">
             <Link className="brand d-flex align-items-center" href="/" aria-label={t.home}>
-              <img className="brand-logo-mark" src={brandAssets.logoMark} alt="" aria-hidden="true" />
+
               <img className="brand-logo-type" src={brandAssets.logoType} alt={t.brand} />
             </Link>
             <nav>
               <ul className="nav-list d-flex align-items-center">
                 <li><Link href="/">{t.home}</Link></li>
-                <li><button type="button" onClick={() => document.getElementById('gifts')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{t.gifts}</button></li>
+                <li><Link href="/gifts">{t.gifts}</Link></li>
                 
                 <li><a href="#brands">{t.shop}</a></li>
                 <li><Link href="/faq">{t.faq}</Link></li>
@@ -1980,18 +2231,46 @@ useEffect(() => {
     </span>
   </button>
 
-  {/* دکمه نصب اپ */}
-  <div className="home-install-app-wrapper">
-    <InstallAppButton />
+ {isLoggedIn ? (
+  <div className="user-menu-wrap">
+    <button
+      className={`user-menu-btn ${isUserMenuOpen ? 'is-open' : ''}`}
+      type="button"
+      onClick={() => setIsUserMenuOpen((current) => !current)}
+    >
+      <span className="user-mini-avatar">
+        <img src={getProfileAvatar(userProfile)} alt={getProfileDisplayName(userProfile)} />
+      </span>
+      <span className="user-menu-name" dir="rtl">{getProfileShortDisplayName(userProfile)}</span>
+      <ChevronDown />
+    </button>
+    {isUserMenuOpen && (
+      <div className="user-dropdown">
+        <button type="button" onClick={openAccount}>
+          <LayoutDashboard />
+          پروفایل داشبورد
+        </button>
+        <button type="button" onClick={handleHomeLogout}>
+          <LogOut />
+          خروج
+        </button>
+      </div>
+    )}
   </div>
-
+) : (
   <button
     className="login-btn home-login-btn"
     type="button"
     onClick={openAccount}
   >
-    {isLoggedIn ? 'حساب کاربری' : t.login}
+    {t.login}
   </button>
+)}
+
+{/* دکمه نصب اپ */}
+<div className="home-install-app-wrapper">
+  <InstallAppButton />
+</div>
 
 </div>
         </header>
@@ -2141,7 +2420,9 @@ useEffect(() => {
             <p>{t.heroText}</p>
             <div className="home-hero-actions">
               <a className="home-primary-action" href="#brands">{t.viewRestaurant}</a>
-              <button type="button" onClick={() => document.getElementById('gifts')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{t.seeGifts}</button>
+              <button type="button" onClick={() => router.push('/gifts')}>
+                {t.seeGifts}
+              </button>
             </div>
           </aside>
         </section>
@@ -2157,12 +2438,7 @@ useEffect(() => {
       <button
         className="home-text-action"
         type="button"
-        onClick={() =>
-          document.getElementById('gifts')?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start'
-          })
-        }
+        onClick={scrollToOtherCards}
       >
         مشاهده بقیه کارت‌ها
       </button>
@@ -2183,8 +2459,20 @@ useEffect(() => {
             <button className="home-text-action" type="button">{t.all}</button>
           </div>
           <div className="home-brand-grid" data-auto-loop="true">
-            {homeData.brands.map((brand, index) => {
-              const href = getBrandHref(brand);
+            {[
+  {
+    title: t.restaurant,
+    businessId: 'melal',
+    image: '/home/img/restaurant-melal.png',
+    href: '/restaurant',
+  },
+  ...homeData.brands.filter(
+    (brand) =>
+      brand.businessId !== 'melal' &&
+      getKnownBusinessKey(brand) !== 'melal'
+  ),
+].map((brand, index) => {
+  const href = getBrandHref(brand);
 
               return (
                 <Link
@@ -2218,7 +2506,7 @@ useEffect(() => {
                 <span>{t.giftDiscountKicker}</span>
                 <h2>{t.giftDiscountCards}</h2>
               </div>
-              <button className="home-text-action" type="button">{t.all}</button>
+              <Link className="home-text-action" href="/gifts">{t.all}</Link>
             </div>
             <div className="home-offer-grid">
               {visibleGiftDiscountOffers.map(renderOfferCard)}
@@ -2370,7 +2658,13 @@ useEffect(() => {
       )}
 
       {discountPopup && (
-  <div className="home-popup-backdrop" onClick={() => setDiscountPopup(null)}>
+  <div
+    className="home-popup-backdrop"
+    onClick={() => {
+      setDiscountPopup(null);
+      setIsDiscountCodeCopied(false);
+    }}
+  >
     <section
       className="home-discount-popup"
       onClick={(event) => event.stopPropagation()}
@@ -2378,7 +2672,10 @@ useEffect(() => {
       <button
         type="button"
         className="home-popup-close"
-        onClick={() => setDiscountPopup(null)}
+        onClick={() => {
+          setDiscountPopup(null);
+          setIsDiscountCodeCopied(false);
+        }}
       >
         {t.close}
       </button>
@@ -2393,34 +2690,41 @@ useEffect(() => {
           : discountPopup.offer?.title}
       </h2>
 
-      <div
-        className={`home-discount-code ${
-          discountPopup.code ? '' : 'is-empty'
-        }`}
-      >
-        {discountPopup.code || 'کدی دریافت نشد'}
-      </div>
-
-      {discountPopup.code ? (
-        <button
-          type="button"
-          className="home-discount-copy-button"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(discountPopup.code);
-            } catch (error) {
-              const textArea = document.createElement('textarea');
-              textArea.value = discountPopup.code;
-              document.body.appendChild(textArea);
-              textArea.select();
-              document.execCommand('copy');
-              document.body.removeChild(textArea);
-            }
-          }}
+      <div className={`home-discount-code-wrap ${discountPopup.code ? 'has-code' : 'is-empty'}`}>
+        <div
+          className={`home-discount-code ${
+            discountPopup.code ? '' : 'is-empty'
+          }`}
+          dir={discountPopup.code ? 'ltr' : 'rtl'}
         >
-          کپی کد
-        </button>
-      ) : null}
+          {discountPopup.code || 'کدی دریافت نشد'}
+        </div>
+
+        {discountPopup.code ? (
+          <button
+            type="button"
+            className={`home-discount-copy ${isDiscountCodeCopied ? 'is-copied' : ''}`}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(discountPopup.code);
+              } catch (error) {
+                const textArea = document.createElement('textarea');
+                textArea.value = discountPopup.code;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+              }
+
+              setIsDiscountCodeCopied(true);
+              window.setTimeout(() => setIsDiscountCodeCopied(false), 1600);
+            }}
+          >
+            {isDiscountCodeCopied ? <Check /> : <Copy />}
+            <span>{isDiscountCodeCopied ? 'کپی شد' : 'کپی کد'}</span>
+          </button>
+        ) : null}
+      </div>
 
       <p>{discountPopup.message}</p>
     </section>
@@ -2431,44 +2735,3 @@ useEffect(() => {
 }
 
 export default HomePage;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
