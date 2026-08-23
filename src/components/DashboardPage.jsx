@@ -5,19 +5,9 @@ import { extractActiveDiscountCodesFromReport, extractActiveGiftsFromReport, ext
 import { defaultProfileAvatar } from '../data/brandAssets';
 import { businessProfiles, dashboardActions, mobileProfileLinks } from '../data/siteData';
 import { toPersianDigits } from '../helper/persianDigits';
+import { normalizeMediaUrl } from '../helper/mediaUrl';
 
 const getImageSrc = (image) => image?.src || image;
-
-const normalizeMediaUrl = (value = '') => {
-  if (!value) return '';
-  const raw = Array.isArray(value) ? value[0] : value;
-  const text = String(raw).trim().replace(/^\"|\"$/g, '');
-  if (!text || text === '[]') return '';
-  if (/^(https?:|data:|blob:)/.test(text)) return text;
-  if (text.startsWith('/')) return text;
-
-  return 'https://api.keymiay.com/images/' + encodeURIComponent(text).replace(/%2F/g, '/');
-};
 
 const handleGiftImageError = (event, fallback) => {
   if (fallback && event.currentTarget.src !== fallback) {
@@ -148,8 +138,12 @@ const firstArray = (...values) => {
 };
 
 const normalizeComparable = (value = '') => String(value).trim().toLowerCase().replace(/[\s\u200c_-]+/g, '');
+const EMPTY_VALUE_LABEL = '-';
 
-const cleanReportText = (value = '') => String(value)
+const cleanReportText = (value = '') => {
+  if (value === null || value === undefined) return '';
+
+  const text = String(value)
   .replace(/\r?\n/g, ' ')
   .replace(/\\+"/g, '')
   .replace(/["'`“”]+/g, '')
@@ -158,6 +152,9 @@ const cleanReportText = (value = '') => String(value)
   .replace(/^[:\s"']+|[:\s"']+$/g, '')
   .replace(/\s+/g, ' ')
   .trim();
+
+  return /^(?:null|undefined)$/i.test(text) ? '' : text;
+};
 
 const normalizeAmountDigits = (value = '') => String(value)
   .replace(/[۰-۹]/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))
@@ -357,6 +354,48 @@ const cleanReportGiftText = (value = '') => cleanReportText(value)
   .replace(/^"+|"+$/g, '')
   .replace(/\[\]/g, '')
   .trim();
+
+const getGiftTextFromExplicitField = (value) => {
+  if (value === null || value === undefined) return '';
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (isPrimitiveValue(item)) return cleanReportGiftText(item);
+
+        return cleanReportGiftText(firstValue(item, ['title', 'name', 'gift_name', 'giftName', 'gift_title', 'giftTitle', 'label', 'text']));
+      })
+      .filter(Boolean)
+      .join('، ');
+  }
+
+  if (typeof value === 'object') {
+    return cleanReportGiftText(firstValue(value, ['title', 'name', 'gift_name', 'giftName', 'gift_title', 'giftTitle', 'label', 'text']));
+  }
+
+  return cleanReportGiftText(value);
+};
+
+const getReportGiftFieldText = (gift, collectionFallback) => {
+  const sources = [];
+
+  if (!isPrimitiveValue(gift) && gift && typeof gift === 'object') {
+    sources.push(gift);
+
+    const collection = gift.collection || gift.business || gift.brand || gift.code?.collection;
+    if (collection && typeof collection === 'object') sources.push(collection);
+  }
+
+  if (collectionFallback && typeof collectionFallback === 'object') sources.push(collectionFallback);
+
+  for (const source of sources) {
+    if (Object.prototype.hasOwnProperty.call(source, 'gifts')) {
+      return getGiftTextFromExplicitField(source.gifts);
+    }
+  }
+
+  return '';
+};
 
 const isUsefulGiftDescription = (value = '') => {
   const text = cleanReportGiftText(value);
@@ -697,9 +736,9 @@ const normalizeGift = (gift, index, { includeCode = false, collectionFallback = 
     (isUsefulGiftDescription(reportDescription) ? reportDescription : '') ||
     fallbackDescription;
   const rawTitle = primitiveGift ? '' : cleanReportText(getDeepValue(gift, ['title', 'gift_name', 'giftName', 'gift_title', 'giftTitle', 'discount_title', 'discountTitle', 'code_title', 'codeTitle']));
-  const descriptionTitle = getGiftTitleFromDescription(description);
-  const title = rawTitle || descriptionTitle || collectionName || '\u0647\u062f\u06cc\u0647 \u0641\u0639\u0627\u0644';
-  const giftText = descriptionTitle || (isUsefulGiftDescription(description) ? description : '') || title;
+  const explicitGiftText = getReportGiftFieldText(gift, collectionFallback);
+  const title = rawTitle || collectionName || '\u0647\u062f\u06cc\u0647 \u0641\u0639\u0627\u0644';
+  const giftText = explicitGiftText || EMPTY_VALUE_LABEL;
   const time = normalizeGiftStatus(getGiftTimeValue(gift), title, collectionName);
 
   const fallbackGift = collectionFallback ? { collection: collectionFallback } : null;
