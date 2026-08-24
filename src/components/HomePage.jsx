@@ -32,6 +32,7 @@ import { getDiscountCards, requestDiscountCode } from '../api/home';
 import { clearAuthToken, getTokenFromAuthResponse, getUserTypeFromAuthResponse, hasAuthToken, setAuthToken } from '../helper/authCookie';
 import { AUTH_SESSION_EXPIRED_EVENT, isAuthExpiredError, resetAuthSessionExpiryNotice, SESSION_EXPIRED_MESSAGE } from '../helper/authSession';
 import { normalizeMediaUrl } from '../helper/mediaUrl';
+import { toEnglishDigits } from '../helper/persianDigits';
 import { brandAssets, defaultProfileAvatar } from '../data/brandAssets';
 import InstallAppButton from '../components/InstallAppButton';
 
@@ -229,6 +230,7 @@ const getOfferDataSources = (offer) => [
   offer?.discount,
   offer?.code,
   offer?.gift,
+  offer?.info,
 ].filter((source) => source && typeof source === 'object');
 
 const firstOfferDefinedValue = (offer, keys) => {
@@ -400,12 +402,39 @@ const getKnownBusinessKey = (offer) => {
   return findBusinessKeyInText(firstValue(offer, ['description', 'subtitle', 'text', 'body']));
 };
 
+const getNestedCollectionId = (offer) => {
+  const sources = [offer?.collection, offer?.business, offer?.brand, offer?.info]
+    .filter((source) => source && typeof source === 'object');
+
+  for (const source of sources) {
+    const value = firstValue(source, [
+      'collection_id',
+      'collectionId',
+      'collectionID',
+      'id',
+      'business_id',
+      'businessId',
+    ]);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return '';
+};
+
 const getCollectionIdForOffer = (offer) => {
-  const explicitCollectionId = firstValue(offer, ['collectionId', 'collection_id', 'collectionID', 'wallet_group_id', 'walletGroupId', 'wallet_group']);
+  const explicitCollectionId = firstValue(offer, ['collectionId', 'collection_id', 'collectionID', 'id', 'business_id', 'businessId']);
   const businessKey = getKnownBusinessKey(offer);
 
-  return explicitCollectionId || knownCollectionIdByBusiness[businessKey] || '';
+  return explicitCollectionId || getNestedCollectionId(offer) || knownCollectionIdByBusiness[businessKey] || '';
 };
+
+const getCollectionRouteIdForOffer = (offer) => (
+  firstValue(offer, ['collectionRouteId', 'collection_route_id', 'profileId', 'profile_id', 'id']) ||
+  getCollectionIdForOffer(offer)
+);
 
 const getOfferFallback = (offer, index) => {
   return {};
@@ -483,6 +512,7 @@ const normalizeOffers = (items) =>
       ...offer,
       id: firstValue(offer, ['id', 'discount_id', 'discountId', 'offer_id', 'offerId']) || fallback.id,
       collectionId: getCollectionIdForOffer(offer) || fallback.collectionId,
+      collectionRouteId: getCollectionRouteIdForOffer(offer) || fallback.collectionRouteId || fallback.collectionId,
       businessId: businessKey || firstValue(offer, ['businessId', 'business_id', 'businessSlug', 'business_slug', 'slug', 'prefix']) || fallback.businessId,
       title: getBusinessDisplayValue(offer, ['title', 'name', 'gift_title', 'giftTitle'], fallback.title, businessKey),
       brand: getBusinessDisplayValue(offer, ['brand', 'business', 'business_name', 'place'], fallback.brand, businessKey),
@@ -564,13 +594,58 @@ const findStoryList = (source) => {
 const normalizeApiStories = (payload) => normalizeStories(findStoryList(payload), { allowLocalMediaFallback: false });
 const normalizeDiscountApiOffers = (payload) => normalizeOffers(findOfferList(resolveHomeData(payload)));
 
+const getStoryImageFallbackForOffer = (offer, stories) => {
+  if (offer?.image || !stories.length) {
+    return '';
+  }
+
+  const offerBusinessKey = getKnownBusinessKey(offer);
+  const offerText = normalizeLooseSearchText([
+    offer?.businessId,
+    offer?.business_id,
+    offer?.prefix,
+    offer?.slug,
+    offer?.brand,
+    offer?.title,
+    offer?.name,
+  ].filter(Boolean).join(' '));
+
+  const story = stories.find((item) => {
+    const storyBusinessKey = getKnownBusinessKey(item);
+    const storyText = normalizeLooseSearchText([
+      item?.businessId,
+      item?.business_id,
+      item?.prefix,
+      item?.slug,
+      item?.brand,
+      item?.title,
+      item?.name,
+    ].filter(Boolean).join(' '));
+
+    return (
+      (offerBusinessKey && storyBusinessKey && offerBusinessKey === storyBusinessKey) ||
+      (offerText && storyText && (offerText.includes(storyText) || storyText.includes(offerText)))
+    );
+  });
+
+  return story?.image || '';
+};
+
+const applyStoryImageFallbacksToOffers = (offers, stories) =>
+  offers.map((offer) => ({
+    ...offer,
+    image: offer.image || getStoryImageFallbackForOffer(offer, stories),
+  }));
+
 const getCollectionHref = (item) => {
-  const collectionId = getCollectionIdForOffer(item);
+  const collectionId = getCollectionRouteIdForOffer(item);
   return collectionId ? `/collections/${collectionId}` : undefined;
 };
 
 const getBrandHref = (brand) => {
-  const collectionId = firstValue(brand, ['collectionId', 'collection_id']) || getCollectionIdForOffer(brand);
+  const collectionId = firstValue(brand, ['collectionRouteId', 'collection_route_id', 'profileId', 'profile_id', 'id']) ||
+    firstValue(brand, ['collectionId', 'collection_id']) ||
+    getCollectionRouteIdForOffer(brand);
   return collectionId ? `/collections/${collectionId}` : brand.href || '#brands';
 };
 
@@ -591,8 +666,9 @@ const buildBrandsFromOffers = (offers) => {
   return offers
     .map((offer) => {
       const collectionId = getCollectionIdForOffer(offer);
+      const collectionRouteId = getCollectionRouteIdForOffer(offer);
       const businessId = getKnownBusinessKey(offer) || firstValue(offer, ['prefix', 'slug', 'businessId', 'business_id']) || collectionId;
-      const key = String(businessId || collectionId || offer.title || '').toLowerCase();
+      const key = String(businessId || collectionRouteId || collectionId || offer.title || '').toLowerCase();
 
       if (!key || seen.has(key)) {
         return null;
@@ -604,8 +680,9 @@ const buildBrandsFromOffers = (offers) => {
         title: offer.brand || offer.title,
         businessId,
         collectionId,
+        collectionRouteId,
         image: offer.image,
-        href: collectionId ? `/collections/${collectionId}` : '#brands',
+        href: collectionRouteId ? `/collections/${collectionRouteId}` : '#brands',
       };
     })
     .filter(Boolean)
@@ -706,8 +783,11 @@ const mergeOfferLists = (fallbackOffers, apiOffers) => {
 const mergeHomeAndDiscountData = (homePayload, discountPayload) => {
   const normalizedHome = normalizeHomeData(homePayload);
   const normalizedDiscount = normalizeHomeData(discountPayload);
-  const discountOffers = normalizeDiscountApiOffers(discountPayload);
   const discountStories = normalizeApiStories(discountPayload);
+  const discountOffers = applyStoryImageFallbacksToOffers(
+    normalizeDiscountApiOffers(discountPayload),
+    discountStories
+  );
   const homeStories = normalizeApiStories(resolveHomeData(homePayload));
   const offerStories = buildStoriesFromOffers(discountOffers);
 
@@ -892,6 +972,8 @@ const discountCodeKeys = [
   'couponCode',
 ];
 
+const normalizeDiscountCodeText = (value) => toEnglishDigits(value).trim();
+
 const isOfferMatch = (item, offer) => {
   if (!item || typeof item !== 'object' || !offer) {
     return false;
@@ -1019,7 +1101,7 @@ const getDirectGeneratedCode = (data) => {
 };
 
 const getDiscountCode = (data, offer) =>
-  findOfferDiscountCode(data, offer) || getDirectGeneratedCode(data);
+  normalizeDiscountCodeText(findOfferDiscountCode(data, offer) || getDirectGeneratedCode(data) || '');
 
 const getDiscountMessage = (data) =>
   findNestedValue(data, ['message', 'text', 'description']);
@@ -1609,6 +1691,28 @@ useEffect(() => {
 
     let timer;
     let paused = false;
+    let isDragging = false;
+    let didDrag = false;
+    let dragStartX = 0;
+    let dragStartScrollLeft = 0;
+    const dragClickThreshold = 10;
+
+    const getCardScrollDistance = (card, cardIndex) => {
+      const rowRect = row.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+
+      if (cardIndex === 0) {
+        const edgeDistance = cardRect.right - rowRect.right;
+        return Math.sign(edgeDistance || 1) * row.scrollWidth;
+      }
+
+      if (cardIndex === cards.length - 1) {
+        const edgeDistance = cardRect.left - rowRect.left;
+        return Math.sign(edgeDistance || 1) * row.scrollWidth;
+      }
+
+      return cardRect.left + cardRect.width / 2 - (rowRect.left + rowRect.width / 2);
+    };
 
     const getCurrentIndex = () => {
       const rowRect = row.getBoundingClientRect();
@@ -1639,19 +1743,11 @@ useEffect(() => {
       const currentIndex = getCurrentIndex();
       const nextIndex = (currentIndex + 1) % cards.length;
 
-     const rowRect = row.getBoundingClientRect();
-const cardRect = cards[nextIndex].getBoundingClientRect();
-
-const horizontalDistance =
-  cardRect.left +
-  cardRect.width / 2 -
-  (rowRect.left + rowRect.width / 2);
-
-row.scrollBy({
-  left: horizontalDistance,
-  top: 0,
-  behavior: 'smooth',
-});
+      row.scrollBy({
+        left: getCardScrollDistance(cards[nextIndex], nextIndex),
+        top: 0,
+        behavior: 'smooth',
+      });
     };
 
     const start = () => {
@@ -1671,22 +1767,76 @@ row.scrollBy({
       start();
     };
 
-    row.addEventListener('pointerdown', pause);
-    row.addEventListener('pointerup', resume);
-    row.addEventListener('pointercancel', resume);
+    const startDrag = (event) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) {
+        return;
+      }
+
+      pause();
+      isDragging = true;
+      didDrag = false;
+      dragStartX = event.clientX;
+      dragStartScrollLeft = row.scrollLeft;
+    };
+
+    const moveDrag = (event) => {
+      if (!isDragging) {
+        return;
+      }
+
+      const deltaX = event.clientX - dragStartX;
+
+      if (Math.abs(deltaX) <= dragClickThreshold) {
+        return;
+      }
+
+      didDrag = true;
+      event.preventDefault();
+      row.classList.add('is-dragging');
+      row.setPointerCapture?.(event.pointerId);
+      row.scrollLeft = dragStartScrollLeft - deltaX;
+    };
+
+    const endDrag = (event) => {
+      if (isDragging && row.hasPointerCapture?.(event.pointerId)) {
+        row.releasePointerCapture?.(event.pointerId);
+      }
+
+      isDragging = false;
+      row.classList.remove('is-dragging');
+      resume();
+    };
+
+    const suppressDraggedClick = (event) => {
+      if (!didDrag) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      didDrag = false;
+    };
+
+    row.addEventListener('pointerdown', startDrag);
+    row.addEventListener('pointermove', moveDrag);
+    row.addEventListener('pointerup', endDrag);
+    row.addEventListener('pointercancel', endDrag);
     row.addEventListener('touchstart', pause, { passive: true });
     row.addEventListener('touchend', resume);
+    row.addEventListener('click', suppressDraggedClick, true);
 
     start();
 
     cleanups.push(() => {
       window.clearInterval(timer);
 
-      row.removeEventListener('pointerdown', pause);
-      row.removeEventListener('pointerup', resume);
-      row.removeEventListener('pointercancel', resume);
+      row.removeEventListener('pointerdown', startDrag);
+      row.removeEventListener('pointermove', moveDrag);
+      row.removeEventListener('pointerup', endDrag);
+      row.removeEventListener('pointercancel', endDrag);
       row.removeEventListener('touchstart', pause);
       row.removeEventListener('touchend', resume);
+      row.removeEventListener('click', suppressDraggedClick, true);
     });
   });
 
@@ -2801,14 +2951,16 @@ useEffect(() => {
       </h2>
 
       <div className={`home-discount-code-wrap ${discountPopup.code ? 'has-code' : 'is-empty'}`}>
-        <div
+        <code
           className={`home-discount-code ${
             discountPopup.code ? '' : 'is-empty'
           }`}
           dir={discountPopup.code ? 'ltr' : 'rtl'}
+          data-skip-persian-digits={discountPopup.code ? 'true' : undefined}
+          data-discount-code={discountPopup.code ? 'true' : undefined}
         >
           {discountPopup.code || 'کدی دریافت نشد'}
-        </div>
+        </code>
 
         {discountPopup.code ? (
           <button
