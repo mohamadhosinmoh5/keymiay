@@ -14,6 +14,19 @@ export const getCollectionDetails = async (collectionId) => {
   return response.data;
 };
 
+export const getUnlockedCollections = async () => {
+  const response = await httpClient.get("/collections/unlocked", {
+    requiresAuth: true,
+    headers: { Accept: "application/json" },
+  });
+
+  if (typeof response.data === "string") {
+    throw new Error("Unlocked collections did not return JSON.");
+  }
+
+  return response.data;
+};
+
 export const toggleCollectionFollow = async (collectionId) => {
   const response = await httpClient.post(
     `/collections/${collectionId}/toggle-follow`,

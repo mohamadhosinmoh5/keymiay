@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { CalendarDays, Crown, Gift, LogOut, Mail, PencilLine, Phone, RefreshCw, TicketPercent, UserRound, Wallet } from 'lucide-react';
 import { extractUserProfileFromReport, getDiscountReport } from '../api/user';
+import { getUnlockedCollections } from '../api/collections';
 import { defaultProfileAvatar } from '../data/brandAssets';
 import { businessProfiles, dashboardActions, mobileProfileLinks } from '../data/siteData';
 import { toEnglishDigits, toPersianDigits } from '../helper/persianDigits';
@@ -1027,6 +1028,81 @@ const normalizeGiftGroupsFromPayload = (payload) => {
   };
 };
 
+const unlockedGiftArrayKeys = ['gifts', 'gift_items', 'giftItems', 'available_gifts', 'availableGifts', 'items'];
+
+const normalizeUnlockedCollectionItems = (payload) => {
+  const collections = firstArray(payload?.collections, payload?.data?.collections, payload?.data, payload);
+
+  return collections.map((collection, index) => {
+    if (!collection || typeof collection !== 'object') return null;
+
+    const matchedProfile = findBusinessProfileForGift(collection);
+    const rawGifts = unlockedGiftArrayKeys
+      .flatMap((key) => Array.isArray(collection[key]) ? collection[key] : [])
+      .filter(Boolean);
+    const giftNames = rawGifts.length
+      ? rawGifts.map((gift) => typeof gift === 'string'
+        ? cleanReportGiftText(gift)
+        : cleanReportGiftText(firstValue(gift, ['name', 'title', 'gift_name', 'giftName', 'label', 'text'])))
+      : cleanReportGiftText(firstValue(collection, ['gifts', 'gift_name', 'giftName', 'gift_title', 'giftTitle']))
+        .split(/[,،\n]+/)
+        .map((gift) => gift.trim())
+        .filter(Boolean);
+    const availableCount = Number(firstValue(collection, [
+      'available_gifts_count',
+      'availableGiftsCount',
+      'available_count',
+      'availableCount',
+      'quantity',
+      'stock',
+    ])) || 0;
+    const giftCount = Number(firstValue(collection, ['gift_count', 'giftCount'])) || 0;
+    const totalCount = giftCount || Number(firstValue(collection, ['total_gifts', 'totalGifts'])) || 0;
+    const isAvailable = isTruthyStatusFlag(collection.gift_available ?? collection.giftAvailable);
+    const image = normalizeMediaUrl(
+      firstValue(collection, [
+        'profile_image',
+        'profileImage',
+        'profile_image_url',
+        'profileImageUrl',
+        'image',
+        'image_url',
+        'imageUrl',
+      ]) ||
+      getMediaValue(collection) ||
+      matchedProfile?.image ||
+      matchedProfile?.bannerImage ||
+      ''
+    );
+    const collectionName = cleanReportText(firstValue(collection, ['name', 'title', 'collection_name', 'collectionName', 'prefix'])) ||
+      matchedProfile?.title || 'مجموعه کی میای';
+    const collectionId = firstValue(collection, ['id', 'collection_id', 'collectionId', 'prefix', 'slug']) || `${collectionName}-${index}`;
+    const countLabel = isAvailable
+      ? `${toPersianDigits(giftCount || availableCount || 0)} هدیه قابل دریافت`
+      : `${toPersianDigits(giftCount || totalCount || 0)} هدیه دریافت‌شده`;
+    const giftText = giftNames.length ? giftNames.join('، ') : 'هدیه فعال';
+
+    return {
+      id: `unlocked-${collectionId}`,
+      title: collectionName,
+      place: collectionName,
+      collectionId,
+      image,
+      imageFallback: image,
+      href: getGiftProfileHref(collection, matchedProfile),
+      giftText,
+      countLabel,
+      availableCount,
+      giftCount,
+      totalCount,
+      isAvailable,
+      isUsed: !isAvailable,
+      isActive: isAvailable,
+      statusLabel: countLabel,
+    };
+  }).filter(Boolean);
+};
+
 const groupGiftItems = (items, { compactRows = false } = {}) => {
   const groups = new Map();
 
@@ -1069,6 +1145,7 @@ function DashboardPage({ isVisible, sectionRequest, userProfile, onEditProfile, 
   const [usedDiscountItems, setUsedDiscountItems] = useState([]);
   const [availableGiftItems, setAvailableGiftItems] = useState([]);
   const [usedGiftItems, setUsedGiftItems] = useState([]);
+  const [unlockedCollections, setUnlockedCollections] = useState([]);
   const [walletSummary, setWalletSummary] = useState(() => buildWalletSummary(null, userProfile));
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
@@ -1085,13 +1162,23 @@ function DashboardPage({ isVisible, sectionRequest, userProfile, onEditProfile, 
   const profileLevel = profileIsComplete ? 'اطلاعات تکمیل شده' : 'تکمیل نشده';
   const profileScore = `${toPersianDigits(profilePoints)} امتیاز`;
   const profileAvatar = getProfileAvatar(userProfile) || defaultProfileAvatar;
-  const activeGiftTotal = activeDiscountItems.length + usedDiscountItems.length + availableGiftItems.length + usedGiftItems.length;
+  const availableUnlockedCollections = unlockedCollections.filter((item) => item.isAvailable);
+  const receivedUnlockedCollections = unlockedCollections.filter((item) => !item.isAvailable);
+  const activeGiftTotal = activeDiscountItems.length + usedDiscountItems.length + availableUnlockedCollections.length + receivedUnlockedCollections.length;
 
   const loadActiveGifts = async () => {
     try {
       setIsReportLoading(true);
       setReportError('');
-      const data = await getDiscountReport();
+      const [reportResult, unlockedResult] = await Promise.allSettled([
+        getDiscountReport(),
+        getUnlockedCollections(),
+      ]);
+      if (reportResult.status === 'rejected' && unlockedResult.status === 'rejected') {
+        throw reportResult.reason;
+      }
+      const data = reportResult.status === 'fulfilled' ? reportResult.value : null;
+      const unlockedData = unlockedResult.status === 'fulfilled' ? unlockedResult.value : null;
 
       const reportProfile = extractUserProfileFromReport(data);
       if (reportProfile) {
@@ -1100,6 +1187,7 @@ function DashboardPage({ isVisible, sectionRequest, userProfile, onEditProfile, 
       setWalletSummary(buildWalletSummary(data, reportProfile || userProfile));
       const discountGroups = normalizeDiscountCodeGroupsFromPayload(data);
       const giftGroups = normalizeGiftGroupsFromPayload(data);
+      setUnlockedCollections(normalizeUnlockedCollectionItems(unlockedData));
       setActiveDiscountItems(discountGroups.activeDiscountItems);
       setUsedDiscountItems(discountGroups.usedDiscountItems);
       setAvailableGiftItems(giftGroups.availableGiftItems);
@@ -1109,6 +1197,7 @@ function DashboardPage({ isVisible, sectionRequest, userProfile, onEditProfile, 
       setUsedDiscountItems([]);
       setAvailableGiftItems([]);
       setUsedGiftItems([]);
+      setUnlockedCollections([]);
       setWalletSummary(buildWalletSummary(null, userProfile));
       setReportError('دریافت هدیه‌ها انجام نشد.');
     } finally {
@@ -1235,7 +1324,7 @@ function DashboardPage({ isVisible, sectionRequest, userProfile, onEditProfile, 
                         <small>{gift.time}</small>
                       ) : (
                         <small className="active-gift-meta-line">
-                          <span className={`active-gift-status-badge ${gift.isUsed ? 'is-used' : gift.isActive ? 'is-active' : 'is-inactive'}`}>{gift.statusLabel}</span>
+                          <span className={`active-gift-status-badge ${gift.isUsed ? 'is-used' : gift.isActive ? 'is-active' : 'is-inactive'}`}>{gift.countLabel || gift.statusLabel}</span>
                         </small>
                       )}
                     </div>
@@ -1264,7 +1353,10 @@ function DashboardPage({ isVisible, sectionRequest, userProfile, onEditProfile, 
       return <p className="dashboard-empty-state">{reportError}</p>;
     }
 
-    if (!activeDiscountItems.length && !usedDiscountItems.length && !availableGiftItems.length && !usedGiftItems.length) {
+    const availableGifts = unlockedCollections.length ? availableUnlockedCollections : availableGiftItems;
+    const receivedGifts = unlockedCollections.length ? receivedUnlockedCollections : usedGiftItems;
+
+    if (!activeDiscountItems.length && !usedDiscountItems.length && !availableGifts.length && !receivedGifts.length) {
       return <p className="dashboard-empty-state">هدیه‌ای برای این حساب ثبت نشده است.</p>;
     }
 
@@ -1276,20 +1368,20 @@ function DashboardPage({ isVisible, sectionRequest, userProfile, onEditProfile, 
               <Gift />
               <h3>هدایا</h3>
             </div>
-            <span>{toPersianDigits(availableGiftItems.length + usedGiftItems.length)} هدیه</span>
+            <span>{toPersianDigits(availableGifts.length + receivedGifts.length)} مجموعه</span>
           </div>
           <div className="dashboard-gift-category-stack">
             <div className="dashboard-gift-category">
-              <h4>هدایای استفاده شده</h4>
-              {renderGiftList(usedGiftItems, {
+              <h4>هدایای دریافت‌شده</h4>
+              {renderGiftList(receivedGifts, {
                 mobile,
                 showCodes: false,
-                emptyMessage: 'هدیه استفاده‌شده‌ای برای این حساب ثبت نشده است.',
+                emptyMessage: 'هدیه دریافت‌شده‌ای برای این حساب ثبت نشده است.',
               })}
             </div>
             <div className="dashboard-gift-category">
-              <h4>هدیه‌های من</h4>
-              {renderGiftList(availableGiftItems, {
+              <h4>هدایای قابل دریافت</h4>
+              {renderGiftList(availableGifts, {
                 mobile,
                 showCodes: false,
                 emptyMessage: 'هدیه‌ای برای این حساب ثبت نشده است.',
